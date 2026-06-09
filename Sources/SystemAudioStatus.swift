@@ -51,6 +51,35 @@ enum SystemAudioStatus {
         return status == noErr
     }
 
+    static func setDefaultOutputVolume(_ scalar: Float) -> Bool {
+        guard let deviceID = defaultOutputDeviceID() else { return false }
+
+        var value = max(0.0, min(1.0, scalar))
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        guard AudioObjectHasProperty(deviceID, &address) else { return false }
+
+        var settable: DarwinBoolean = false
+        guard AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr, settable.boolValue else {
+            return false
+        }
+
+        let status = AudioObjectSetPropertyData(
+            deviceID,
+            &address,
+            0,
+            nil,
+            UInt32(MemoryLayout<Float32>.size),
+            &value
+        )
+
+        return status == noErr
+    }
+
     static func defaultOutputVolume() -> Float? {
         guard let deviceID = defaultOutputDeviceID() else { return nil }
 

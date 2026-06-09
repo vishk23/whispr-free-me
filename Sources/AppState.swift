@@ -195,7 +195,7 @@ private enum SessionIntent {
 
 final class AppState: ObservableObject, @unchecked Sendable {
     private enum ActiveAudioInterruption {
-        case muted(previouslyMuted: Bool)
+        case ducked(previousVolume: Float)
     }
 
     private let apiKeyStorageKey = "groq_api_key"
@@ -2091,23 +2091,35 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func applyAudioInterruptionIfNeeded() {
         guard dictationAudioInterruptionEnabled, activeAudioInterruption == nil else { return }
 
-        let wasMuted = SystemAudioStatus.isDefaultOutputMuted()
-        if wasMuted {
-            activeAudioInterruption = .muted(previouslyMuted: true)
-        } else if SystemAudioStatus.setDefaultOutputMuted(true) {
-            activeAudioInterruption = .muted(previouslyMuted: false)
+        guard let current = SystemAudioStatus.defaultOutputVolume() else { return }
+        activeAudioInterruption = .ducked(previousVolume: current)
+        let target = min(current, 0.2)
+        if target < current {
+            rampOutputVolume(to: target, from: current)
         }
     }
 
     private func restoreAudioInterruptionIfNeeded() {
-        guard let activeAudioInterruption else { return }
-        self.activeAudioInterruption = nil
+        guard case let .ducked(previousVolume) = activeAudioInterruption else {
+            activeAudioInterruption = nil
+            return
+        }
+        activeAudioInterruption = nil
+        let current = SystemAudioStatus.defaultOutputVolume() ?? previousVolume
+        rampOutputVolume(to: previousVolume, from: current)
+    }
 
-        switch activeAudioInterruption {
-        case .muted(let previouslyMuted):
-            if !previouslyMuted {
-                _ = SystemAudioStatus.setDefaultOutputMuted(false)
+    private func rampOutputVolume(to target: Float, from start: Float) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let steps = 12
+            let duration = 0.18
+            for i in 1...steps {
+                let t = Float(i) / Float(steps)
+                let v = start + (target - start) * t
+                _ = SystemAudioStatus.setDefaultOutputVolume(v)
+                Thread.sleep(forTimeInterval: duration / Double(steps))
             }
+            _ = SystemAudioStatus.setDefaultOutputVolume(target)
         }
     }
 

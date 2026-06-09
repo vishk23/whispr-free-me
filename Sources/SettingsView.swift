@@ -1079,11 +1079,11 @@ struct GeneralSettingsView: View {
     private var dictationAudioSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(
-                "Mute audio when dictation starts",
+                "Lower other audio while dictating",
                 isOn: $appState.dictationAudioInterruptionEnabled
             )
 
-            Text("\(AppName.displayName) restores the audio state it changed when dictation ends.")
+            Text("Smoothly dips your other audio while you dictate, then restores it — handy when dictating over AirPods.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
