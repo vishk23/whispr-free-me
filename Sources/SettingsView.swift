@@ -466,6 +466,7 @@ struct GeneralSettingsView: View {
     @AppStorage("show_menu_bar_icon") private var showMenuBarIcon = true
     @AppStorage("overlay_display_id") private var overlayDisplayID = 0
     @AppStorage("use_compact_overlay") private var useCompactOverlay = true
+    @AppStorage("contentAwareModesEnabled") private var contentAwareModesEnabled = true
     @State private var screensVersion = 0
     @State private var apiKeyInput: String = ""
     @State private var apiBaseURLInput: String = ""
@@ -662,6 +663,9 @@ struct GeneralSettingsView: View {
                 }
                 SettingsCard("Edit Mode", icon: "pencil") {
                     commandModeSection
+                }
+                SettingsCard("Modes", icon: "sparkles") {
+                    modesSection
                 }
                 SettingsCard("Clipboard", icon: "doc.on.clipboard") {
                     clipboardSection
@@ -1187,6 +1191,22 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+        }
+    }
+
+    // MARK: Modes
+
+    private var modesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Content-aware modes", isOn: $contentAwareModesEnabled)
+
+            Text("Automatically matches your writing style to the app you're dictating into — formal for email, code for editors, casual for chat.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text("Formal: Mail, Outlook · Code: Xcode, Terminal, VS Code · Casual: Messages, Slack, Discord")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 

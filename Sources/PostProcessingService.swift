@@ -158,6 +158,22 @@ Behavior:
     ) async throws -> PostProcessingResult {
         let vocabularyTerms = mergedVocabularyTerms(rawVocabulary: customVocabulary)
 
+        // Inject per-app style hint when content-aware modes are enabled.
+        let effectiveSystemPrompt: String
+        if DictationModes.isEnabled {
+            let snippet = DictationModes.mode(forBundleId: context.bundleIdentifier).promptSnippet
+            if !snippet.isEmpty {
+                let base = customSystemPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? Self.defaultSystemPrompt
+                    : customSystemPrompt
+                effectiveSystemPrompt = base + snippet
+            } else {
+                effectiveSystemPrompt = customSystemPrompt
+            }
+        } else {
+            effectiveSystemPrompt = customSystemPrompt
+        }
+
         let timeoutSeconds = postProcessingTimeoutSeconds
         return try await withThrowingTaskGroup(of: PostProcessingResult.self) { group in
             group.addTask { [weak self] in
@@ -168,7 +184,7 @@ Behavior:
                     transcript: transcript,
                     contextSummary: context.contextSummary,
                     customVocabulary: vocabularyTerms,
-                    customSystemPrompt: customSystemPrompt,
+                    customSystemPrompt: effectiveSystemPrompt,
                     outputLanguage: outputLanguage
                 )
             }
