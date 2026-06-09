@@ -347,6 +347,10 @@ struct MenuBarView: View {
                 NotificationCenter.default.post(name: .showSetup, object: nil)
             }
 
+            Button("Dashboard") {
+                NotificationCenter.default.post(name: .showDashboard, object: nil)
+            }
+
             Button("Settings") {
                 NotificationCenter.default.post(name: .showSettings, object: nil)
             }
