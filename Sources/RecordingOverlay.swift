@@ -519,16 +519,12 @@ struct WingedRecordingView: View {
                                 audioLevel: state.audioLevel,
                                 showsActivityPulse: state.phase == .recording
                             )
-                            if let modeName = state.dictationModeName {
-                                HStack(spacing: 2) {
-                                    Image(systemName: state.dictationModeIcon ?? "text.alignleft")
-                                        .font(.system(size: 7, weight: .medium))
-                                    Text(modeName)
-                                        .font(.system(size: 7, weight: .medium))
-                                }
-                                .foregroundStyle(.white.opacity(0.55))
-                                .lineLimit(1)
-                                .transition(.opacity)
+                            if state.dictationModeName != nil {
+                                // Wing is only 36pt wide — icon-only at a readable size.
+                                Image(systemName: state.dictationModeIcon ?? "text.alignleft")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.80))
+                                    .transition(.opacity)
                             }
                         }
                         .transition(.opacity)
@@ -1011,6 +1007,24 @@ struct RecordingOverlayView: View {
                             }
                         }
                         .frame(width: trailingAccessoryWidth, alignment: .trailing)
+                    }
+
+                    // Mode badge — bottom-centre of the pill, visible whenever
+                    // recording is live (including .standard after fix #1).
+                    if showsLiveRecordingContent, let modeName = state.dictationModeName {
+                        VStack {
+                            Spacer(minLength: 0)
+                            HStack(spacing: 3) {
+                                Image(systemName: state.dictationModeIcon ?? "text.alignleft")
+                                    .font(.system(size: 10, weight: .medium))
+                                Text(modeName)
+                                    .font(.system(size: 10, weight: .medium))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.bottom, 2)
+                            .transition(.opacity)
+                        }
                     }
                 }
             }

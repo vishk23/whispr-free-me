@@ -4,10 +4,10 @@ enum DictationMode: String {
     case standard, formal, code, casual
 
     /// Human-readable label shown in the recording overlay badge.
-    /// nil for `.standard` so the badge is hidden in the default mode.
+    /// Always non-nil so the active mode is always confirmed in the UI.
     var displayName: String? {
         switch self {
-        case .standard: return nil
+        case .standard: return "Standard"
         case .formal:   return "Formal"
         case .code:     return "Code"
         case .casual:   return "Casual"
