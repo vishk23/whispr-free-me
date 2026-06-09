@@ -678,6 +678,9 @@ struct GeneralSettingsView: View {
                 SettingsCard("Permissions", icon: "lock.shield.fill") {
                     permissionsSection
                 }
+                SettingsCard("Voice Bank", icon: "waveform.badge.mic") {
+                    voiceBankSection
+                }
                 SettingsCard("Build", icon: "info.circle.fill") {
                     buildInfoSection
                 }
@@ -1370,6 +1373,74 @@ struct GeneralSettingsView: View {
         .padding(10)
         .background(Color(nsColor: .controlBackgroundColor))
         .cornerRadius(6)
+    }
+
+    // MARK: Voice Bank
+
+    private var voiceBankSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $appState.voiceBankEnabled) {
+                Text("Save my voice locally to build a training dataset")
+            }
+
+            Text("""
+            When on, Whispr Free Me keeps a local copy of the audio and the exact words \
+            of each dictation in Application Support. Nothing is uploaded. Turn it off \
+            any time, and delete what you've collected below.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            let stats = appState.voiceBankStats()
+            HStack {
+                Text("\(stats.count) samples")
+                Spacer()
+                Text(String(format: "%.1f min banked", Double(stats.totalDurationMs) / 60_000.0))
+            }
+            .font(.caption.monospacedDigit())
+
+            HStack {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([appState.voiceBankDirectory])
+                }
+                Spacer()
+                Button("Delete All", role: .destructive) {
+                    appState.deleteAllVoiceBank()
+                }
+                .disabled(stats.count == 0)
+            }
+
+            if !appState.voiceBankSamples().isEmpty {
+                Divider()
+
+                ForEach(appState.voiceBankSamples()) { sample in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(sample.transcript)
+                                .lineLimit(2)
+                                .font(.callout)
+                            Spacer()
+                            Button(role: .destructive) {
+                                appState.deleteVoiceSample(id: sample.id)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        HStack(spacing: 8) {
+                            Text(String(format: "%.1fs", Double(sample.durationMs) / 1000.0))
+                            Text("\(sample.wordCount) words")
+                            if let app = sample.appBundleId { Text(app) }
+                        }
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                        AudioPlayerView(audioURL: appState.voiceBankAudioURL(for: sample))
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
     }
 
     private func checkMicPermission() {
