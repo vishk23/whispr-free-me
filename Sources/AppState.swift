@@ -1897,7 +1897,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         if triggerMode == .toggle {
             cancelPendingShortcutStart()
         }
-        playAlertSound(named: "Basso")
+        playAlertSound(named: "Sosumi")
         scheduleReadyStatusReset(after: 2, matching: ["Select text to transform first"])
     }
 
@@ -1913,7 +1913,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         if triggerMode == .toggle {
             cancelPendingShortcutStart()
         }
-        playAlertSound(named: "Basso")
+        playAlertSound(named: "Sosumi")
         scheduleReadyStatusReset(after: 2, matching: ["Fix Edit Mode modifier"])
     }
 
@@ -1992,7 +1992,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             activeRecordingTriggerMode = nil
             currentSessionIntent = .dictation
             shortcutSessionController.reset()
-            playAlertSound(named: "Basso")
+            playAlertSound(named: "Sosumi")
             showScreenshotPermissionAlert(message: message)
             return false
         }
@@ -2527,7 +2527,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         isTranscribing = true
         statusText = "Preparing audio..."
         errorMessage = nil
-        playAlertSound(named: "Pop")
+        playAlertSound(named: "Glass")
         overlayManager.showTranscribing()
         audioRecorder.stopRecording { [weak self] fileURL in
             guard let self else { return }
@@ -2987,7 +2987,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             statusText = "Screenshot Required"
             overlayManager.dismiss()
 
-            playAlertSound(named: "Basso")
+            playAlertSound(named: "Funk")
             showScreenshotPermissionAlert(message: message)
         }
         // Non-permission errors (transient failures) — continue recording without context
