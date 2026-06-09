@@ -110,6 +110,14 @@ struct MenuBarView: View {
                     .padding(.vertical, 6)
             }
 
+            if appState.voiceBankEnabled {
+                Label("Voice Bank: on (\(appState.voiceBankStats().count))", systemImage: "waveform.badge.mic")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+            }
+
             Divider()
 
             // Manual toggle
