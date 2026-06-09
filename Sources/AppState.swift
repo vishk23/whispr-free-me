@@ -2267,9 +2267,15 @@ final class AppState: ObservableObject, @unchecked Sendable {
             overlayShown = true
             os_log(.info, log: recordingLog, "engine slow — showing initializing overlay")
             self.clearPendingOverlayDismissToken()
+            let frontBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            let dictationMode = DictationModes.isEnabled ? DictationModes.mode(forBundleId: frontBundle) : DictationMode.standard
+            let modeName = self.currentSessionIntent.isCommandMode ? nil : (DictationModes.isEnabled ? dictationMode.displayName : nil)
+            let modeIcon = self.currentSessionIntent.isCommandMode ? nil : (DictationModes.isEnabled ? dictationMode.iconName : nil)
             self.overlayManager.showInitializing(
                 mode: self.activeRecordingTriggerMode ?? triggerMode,
-                isCommandMode: self.currentSessionIntent.isCommandMode
+                isCommandMode: self.currentSessionIntent.isCommandMode,
+                dictationModeName: modeName,
+                dictationModeIcon: modeIcon
             )
         }
         initTimer.resume()
@@ -2283,15 +2289,23 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 os_log(.info, log: recordingLog, "first real audio — transitioning to waveform")
                 self.statusText = "Recording..."
                 self.clearPendingOverlayDismissToken()
+                let frontBundle2 = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                let dictationMode2 = DictationModes.isEnabled ? DictationModes.mode(forBundleId: frontBundle2) : DictationMode.standard
+                let modeName2 = self.currentSessionIntent.isCommandMode ? nil : (DictationModes.isEnabled ? dictationMode2.displayName : nil)
+                let modeIcon2 = self.currentSessionIntent.isCommandMode ? nil : (DictationModes.isEnabled ? dictationMode2.iconName : nil)
                 if overlayShown {
                     self.overlayManager.transitionToRecording(
                         mode: self.activeRecordingTriggerMode ?? triggerMode,
-                        isCommandMode: self.currentSessionIntent.isCommandMode
+                        isCommandMode: self.currentSessionIntent.isCommandMode,
+                        dictationModeName: modeName2,
+                        dictationModeIcon: modeIcon2
                     )
                 } else {
                     self.overlayManager.showRecording(
                         mode: self.activeRecordingTriggerMode ?? triggerMode,
-                        isCommandMode: self.currentSessionIntent.isCommandMode
+                        isCommandMode: self.currentSessionIntent.isCommandMode,
+                        dictationModeName: modeName2,
+                        dictationModeIcon: modeIcon2
                     )
                 }
                 overlayShown = true

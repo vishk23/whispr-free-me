@@ -8,6 +8,8 @@ final class RecordingOverlayState: ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var recordingTriggerMode: RecordingTriggerMode = .hold
     @Published var isCommandMode = false
+    @Published var dictationModeName: String? = nil
+    @Published var dictationModeIcon: String? = nil
     @Published var updateVersion: String = ""
     @Published var errorMessage: String?
     @Published var toastID: UUID?
@@ -128,33 +130,39 @@ final class RecordingOverlayManager {
             || overlayState.phase == .updateAvailable
     }
 
-    func showInitializing(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false) {
+    func showInitializing(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false, dictationModeName: String? = nil, dictationModeIcon: String? = nil) {
         DispatchQueue.main.async {
             self.lockedOverlayWidth = nil
             self.overlayState.recordingTriggerMode = mode
             self.overlayState.isCommandMode = isCommandMode
+            self.overlayState.dictationModeName = dictationModeName
+            self.overlayState.dictationModeIcon = dictationModeIcon
             self.overlayState.phase = .initializing
             self.overlayState.audioLevel = 0
             self.showOverlayPanel(animatedResize: false)
         }
     }
 
-    func showRecording(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false) {
+    func showRecording(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false, dictationModeName: String? = nil, dictationModeIcon: String? = nil) {
         DispatchQueue.main.async {
             self.lockedOverlayWidth = nil
             self.overlayState.recordingTriggerMode = mode
             self.overlayState.isCommandMode = isCommandMode
+            self.overlayState.dictationModeName = dictationModeName
+            self.overlayState.dictationModeIcon = dictationModeIcon
             self.overlayState.phase = .recording
             self.overlayState.audioLevel = 0
             self.showOverlayPanel(animatedResize: true)
         }
     }
 
-    func transitionToRecording(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false) {
+    func transitionToRecording(mode: RecordingTriggerMode = .hold, isCommandMode: Bool = false, dictationModeName: String? = nil, dictationModeIcon: String? = nil) {
         DispatchQueue.main.async {
             self.lockedOverlayWidth = nil
             self.overlayState.recordingTriggerMode = mode
             self.overlayState.isCommandMode = isCommandMode
+            self.overlayState.dictationModeName = dictationModeName
+            self.overlayState.dictationModeIcon = dictationModeIcon
             self.overlayState.phase = .recording
             self.updateOverlayLayout(animated: true)
         }
@@ -227,6 +235,8 @@ final class RecordingOverlayManager {
         DispatchQueue.main.async {
             self.lockedOverlayWidth = nil
             self.overlayState.isCommandMode = false
+            self.overlayState.dictationModeName = nil
+            self.overlayState.dictationModeIcon = nil
             self.overlayState.updateVersion = version
             self.overlayState.phase = .updateAvailable
             self.showOverlayPanel(animatedResize: true)
@@ -445,6 +455,8 @@ final class RecordingOverlayManager {
     private func dismissAll() {
         lockedOverlayWidth = nil
         overlayState.isCommandMode = false
+        overlayState.dictationModeName = nil
+        overlayState.dictationModeIcon = nil
         overlayState.updateVersion = ""
         if let panel = overlayWindow {
             panel.orderOut(nil)
@@ -507,6 +519,17 @@ struct WingedRecordingView: View {
                                 audioLevel: state.audioLevel,
                                 showsActivityPulse: state.phase == .recording
                             )
+                            if let modeName = state.dictationModeName {
+                                HStack(spacing: 2) {
+                                    Image(systemName: state.dictationModeIcon ?? "text.alignleft")
+                                        .font(.system(size: 7, weight: .medium))
+                                    Text(modeName)
+                                        .font(.system(size: 7, weight: .medium))
+                                }
+                                .foregroundStyle(.white.opacity(0.55))
+                                .lineLimit(1)
+                                .transition(.opacity)
+                            }
                         }
                         .transition(.opacity)
                     } else {

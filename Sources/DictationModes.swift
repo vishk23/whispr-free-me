@@ -3,6 +3,27 @@ import Foundation
 enum DictationMode: String {
     case standard, formal, code, casual
 
+    /// Human-readable label shown in the recording overlay badge.
+    /// nil for `.standard` so the badge is hidden in the default mode.
+    var displayName: String? {
+        switch self {
+        case .standard: return nil
+        case .formal:   return "Formal"
+        case .code:     return "Code"
+        case .casual:   return "Casual"
+        }
+    }
+
+    /// SF Symbol name used alongside `displayName` in the overlay badge.
+    var iconName: String {
+        switch self {
+        case .standard: return "text.alignleft"
+        case .formal:   return "envelope"
+        case .code:     return "chevron.left.forwardslash.chevron.right"
+        case .casual:   return "bubble.left"
+        }
+    }
+
     var promptSnippet: String {
         switch self {
         case .standard:
