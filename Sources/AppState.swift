@@ -196,6 +196,7 @@ private enum SessionIntent {
 final class AppState: ObservableObject, @unchecked Sendable {
     private enum ActiveAudioInterruption {
         case ducked(previousVolume: Float)
+        case muted(previouslyMuted: Bool)
     }
 
     private let apiKeyStorageKey = "groq_api_key"
@@ -2091,22 +2092,40 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private func applyAudioInterruptionIfNeeded() {
         guard dictationAudioInterruptionEnabled, activeAudioInterruption == nil else { return }
 
-        guard let current = SystemAudioStatus.defaultOutputVolume() else { return }
-        activeAudioInterruption = .ducked(previousVolume: current)
-        let target = min(current, 0.2)
-        if target < current {
-            rampOutputVolume(to: target, from: current)
+        // Prefer a smooth volume duck. On devices whose volume isn't settable (notably
+        // AirPods in call/HFP mode), fall back to muting — so dictation can never make
+        // the other audio *louder*, only quieter.
+        if let current = SystemAudioStatus.defaultOutputVolume(),
+           SystemAudioStatus.isDefaultOutputVolumeSettable() {
+            activeAudioInterruption = .ducked(previousVolume: current)
+            let target = min(current, 0.2)
+            os_log(.info, log: recordingLog, "audio duck: volume settable, dipping %.2f -> %.2f", current, target)
+            if target < current {
+                rampOutputVolume(to: target, from: current)
+            }
+        } else {
+            let wasMuted = SystemAudioStatus.isDefaultOutputMuted()
+            os_log(.info, log: recordingLog, "audio duck: volume NOT settable, muting instead (wasMuted=%{public}d)", wasMuted ? 1 : 0)
+            if wasMuted {
+                activeAudioInterruption = .muted(previouslyMuted: true)
+            } else if SystemAudioStatus.setDefaultOutputMuted(true) {
+                activeAudioInterruption = .muted(previouslyMuted: false)
+            }
         }
     }
 
     private func restoreAudioInterruptionIfNeeded() {
-        guard case let .ducked(previousVolume) = activeAudioInterruption else {
-            activeAudioInterruption = nil
-            return
+        guard let activeAudioInterruption else { return }
+        self.activeAudioInterruption = nil
+        switch activeAudioInterruption {
+        case .ducked(let previousVolume):
+            let current = SystemAudioStatus.defaultOutputVolume() ?? previousVolume
+            rampOutputVolume(to: previousVolume, from: current)
+        case .muted(let previouslyMuted):
+            if !previouslyMuted {
+                _ = SystemAudioStatus.setDefaultOutputMuted(false)
+            }
         }
-        activeAudioInterruption = nil
-        let current = SystemAudioStatus.defaultOutputVolume() ?? previousVolume
-        rampOutputVolume(to: previousVolume, from: current)
     }
 
     private func rampOutputVolume(to target: Float, from start: Float) {

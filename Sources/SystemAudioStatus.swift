@@ -80,6 +80,22 @@ enum SystemAudioStatus {
         return status == noErr
     }
 
+    /// Whether the default output device's master volume can actually be set. Some
+    /// devices (notably AirPods in call/HFP mode) expose volume read-only, in which
+    /// case the caller should fall back to muting instead of a volume duck.
+    static func isDefaultOutputVolumeSettable() -> Bool {
+        guard let deviceID = defaultOutputDeviceID() else { return false }
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        guard AudioObjectHasProperty(deviceID, &address) else { return false }
+        var settable: DarwinBoolean = false
+        guard AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr else { return false }
+        return settable.boolValue
+    }
+
     static func defaultOutputVolume() -> Float? {
         guard let deviceID = defaultOutputDeviceID() else { return nil }
 
