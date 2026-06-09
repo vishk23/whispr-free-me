@@ -17,5 +17,6 @@ let package = Package(
             dependencies: ["Transcription"],
             path: "Tests/TranscriptionTests"
         ),
+        .executableTarget(name: "replay", dependencies: ["Transcription"], path: "Tools/replay"),
     ]
 )
