@@ -500,8 +500,18 @@ struct WingedRecordingView: View {
                     if state.phase == .feedback {
                         Color.clear
                     } else if state.phase == .initializing {
-                        InitializingDotsView()
-                            .transition(.opacity)
+                        VStack(spacing: 1) {
+                            InitializingDotsView()
+                            // Show compact chip immediately during initializing phase.
+                            if let icon = state.dictationModeIcon {
+                                ModeChipCompactView(
+                                    modeIcon: icon,
+                                    modeName: state.dictationModeName
+                                )
+                                .animation(.spring(response: 0.28, dampingFraction: 0.9), value: state.dictationModeName)
+                            }
+                        }
+                        .transition(.opacity)
                     } else if showsLiveRecordingContent {
                         // Command-mode pencil sits directly above and centered
                         // over the compact waveform inside the same wing
@@ -519,12 +529,13 @@ struct WingedRecordingView: View {
                                 audioLevel: state.audioLevel,
                                 showsActivityPulse: state.phase == .recording
                             )
-                            if state.dictationModeName != nil {
-                                // Wing is only 36pt wide — icon-only at a readable size.
-                                Image(systemName: state.dictationModeIcon ?? "text.alignleft")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.80))
-                                    .transition(.opacity)
+                            // Wing is only 36pt wide — icon-only chip, no text.
+                            if let icon = state.dictationModeIcon {
+                                ModeChipCompactView(
+                                    modeIcon: icon,
+                                    modeName: state.dictationModeName
+                                )
+                                .animation(.spring(response: 0.28, dampingFraction: 0.9), value: state.dictationModeName)
                             }
                         }
                         .transition(.opacity)
@@ -939,6 +950,59 @@ struct InitializingDotsView: View {
     }
 }
 
+// MARK: - Mode Chip
+
+/// Returns the accent color for a dictation mode name.
+private func chipColor(for modeName: String?) -> Color {
+    switch modeName {
+    case "Formal":   return .blue
+    case "Code":     return .purple
+    case "Casual":   return .orange
+    default:         return Color(white: 0.72)  // light gray, readable on black
+    }
+}
+
+/// Full chip: tinted Capsule background + icon + label. Used in the drop-down pill layout.
+struct ModeChipView: View {
+    let modeName: String
+    let modeIcon: String
+
+    private var color: Color { chipColor(for: modeName) }
+
+    var body: some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: modeIcon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(modeName)
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2.5)
+        .background(Capsule().fill(color.opacity(0.22)))
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    }
+}
+
+/// Compact chip: icon-only inside a tinted Capsule. Used in the 36pt winged layout.
+struct ModeChipCompactView: View {
+    let modeIcon: String
+    let modeName: String?
+
+    private var color: Color { chipColor(for: modeName) }
+
+    var body: some View {
+        Image(systemName: modeIcon)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .background(Capsule().fill(color.opacity(0.22)))
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    }
+}
+
 struct RecordingOverlayView: View {
     @ObservedObject var state: RecordingOverlayState
     let onStopButtonPressed: () -> Void
@@ -1009,21 +1073,19 @@ struct RecordingOverlayView: View {
                         .frame(width: trailingAccessoryWidth, alignment: .trailing)
                     }
 
-                    // Mode badge — bottom-centre of the pill, visible whenever
-                    // recording is live (including .standard after fix #1).
-                    if showsLiveRecordingContent, let modeName = state.dictationModeName {
+                    // Mode chip — bottom-centre of the pill, shown as soon as
+                    // the overlay is up (initializing OR recording phases) so
+                    // there is no lag between the pill appearing and the chip.
+                    if (state.phase == .initializing || state.phase == .recording),
+                       let modeName = state.dictationModeName {
                         VStack {
                             Spacer(minLength: 0)
-                            HStack(spacing: 3) {
-                                Image(systemName: state.dictationModeIcon ?? "text.alignleft")
-                                    .font(.system(size: 10, weight: .medium))
-                                Text(modeName)
-                                    .font(.system(size: 10, weight: .medium))
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(.white.opacity(0.85))
-                            .padding(.bottom, 2)
-                            .transition(.opacity)
+                            ModeChipView(
+                                modeName: modeName,
+                                modeIcon: state.dictationModeIcon ?? "text.alignleft"
+                            )
+                            .padding(.bottom, 3)
+                            .animation(.spring(response: 0.28, dampingFraction: 0.9), value: modeName)
                         }
                     }
                 }
