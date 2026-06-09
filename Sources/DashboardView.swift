@@ -8,6 +8,7 @@ enum DashboardTab: String, CaseIterable, Identifiable {
     case dictionary  = "Dictionary"
     case snippets    = "Snippets"
     case voiceClone  = "Voice Clone"
+    case speak       = "Speak"
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum DashboardTab: String, CaseIterable, Identifiable {
         case .dictionary:  return "text.book.closed.fill"
         case .snippets:    return "text.badge.plus"
         case .voiceClone:  return "waveform.badge.plus"
+        case .speak:       return "speaker.wave.2.fill"
         }
     }
 }
@@ -73,6 +75,8 @@ struct DashboardView: View {
                     DashboardSnippetsTab()
                 case .voiceClone:
                     DashboardVoiceCloneTab()
+                case .speak:
+                    DashboardSpeakTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -646,6 +650,104 @@ struct DashboardVoiceCloneTab: View {
                         }
                         .padding(.vertical, 4)
                     }
+                }
+            }
+            .padding(24)
+        }
+    }
+}
+
+// MARK: - Speak tab
+
+struct DashboardSpeakTab: View {
+    @EnvironmentObject var appState: AppState
+    @State private var speakText: String = ""
+
+    private var canSpeak: Bool {
+        !appState.elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appState.clonedVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !speakText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !appState.isSpeaking
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+
+                // Header card
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .foregroundStyle(.secondary)
+                            Text("Speak in My Voice")
+                                .font(.headline)
+                        }
+                        Text("Type or paste text below and hear it read back in your cloned voice.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Voice-not-ready hint
+                if appState.clonedVoiceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    GroupBox {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                            Text("No voice clone yet. Go to the Voice Clone tab to create one first.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                // Text editor
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Text to speak")
+                            .font(.subheadline.weight(.medium))
+                        TextEditor(text: $speakText)
+                            .font(.body)
+                            .frame(minHeight: 120, maxHeight: 240)
+                            .scrollContentBackground(.hidden)
+                            .background(Color(NSColor.textBackgroundColor))
+                            .cornerRadius(6)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
+                            )
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Speak button + status
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            Task { await appState.speakAsMe(text: speakText) }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if appState.isSpeaking {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(appState.isSpeaking ? "Speaking…" : "Speak in my voice")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canSpeak)
+
+                        if !appState.speakStatus.isEmpty {
+                            Text(appState.speakStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
             }
             .padding(24)

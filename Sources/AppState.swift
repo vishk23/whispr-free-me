@@ -127,6 +127,21 @@ private struct PendingClipboardRestore {
     let writtenTranscript: String
 }
 
+/// Bridges AVAudioPlayerDelegate to a Swift closure so AppState can hold a
+/// strongly-typed delegate object without exposing Objective-C protocol conformance
+/// on AppState itself.
+private final class AVAudioPlayerDelegateHandler: NSObject, AVAudioPlayerDelegate {
+    private let onFinish: () -> Void
+
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        onFinish()
+    }
+}
+
 private struct TranscriptCommandParsingResult {
     let transcript: String
     let shouldPressEnterAfterPaste: Bool
@@ -519,6 +534,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     @Published var voiceCloneStatus: String = ""
     @Published var isCreatingVoiceClone = false
+
+    // MARK: - Speak-as-me TTS
+    @Published var isSpeaking = false
+    @Published var speakStatus = ""
+
+    private var audioPlayer: AVAudioPlayer?
+    private var audioPlayerDelegate: AVAudioPlayerDelegateHandler?
 
     @Published var isPressEnterVoiceCommandEnabled: Bool {
         didSet {
@@ -1202,6 +1224,66 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 voiceCloneStatus = "Failed: \(error.localizedDescription)"
                 isCreatingVoiceClone = false
             }
+        }
+    }
+
+    // MARK: - Speak-as-me TTS
+
+    /// Synthesizes `text` with the cloned voice and plays it back via AVAudioPlayer.
+    func speakAsMe(text: String) async {
+        let key = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            await MainActor.run { speakStatus = "Add your ElevenLabs key in the Voice Clone tab." }
+            return
+        }
+        let voiceID = clonedVoiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !voiceID.isEmpty else {
+            await MainActor.run { speakStatus = "Create your voice first in the Voice Clone tab." }
+            return
+        }
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else { return }
+
+        await MainActor.run {
+            isSpeaking = true
+            speakStatus = "Synthesizing…"
+        }
+
+        do {
+            let data = try await ElevenLabsClient(apiKey: key).synthesizeSpeech(text: trimmedText, voiceID: voiceID)
+            let player = try AVAudioPlayer(data: data)
+            let delegate = AVAudioPlayerDelegateHandler { [weak self] in
+                DispatchQueue.main.async {
+                    self?.isSpeaking = false
+                    self?.speakStatus = ""
+                }
+            }
+            player.delegate = delegate
+            await MainActor.run {
+                self.audioPlayer = player
+                self.audioPlayerDelegate = delegate
+                player.play()
+                speakStatus = "Speaking…"
+            }
+        } catch let elevenErr as ElevenLabsError {
+            await MainActor.run {
+                speakStatus = "Error: \(elevenErr.localizedDescription)"
+                isSpeaking = false
+            }
+        } catch {
+            await MainActor.run {
+                speakStatus = "Error: \(error.localizedDescription)"
+                isSpeaking = false
+            }
+        }
+    }
+
+    /// Reads the current clipboard string and speaks it in the cloned voice.
+    func speakClipboard() {
+        if let clip = NSPasteboard.general.string(forType: .string), !clip.isEmpty {
+            Task { await speakAsMe(text: clip) }
+        } else {
+            speakStatus = "Clipboard is empty."
         }
     }
 

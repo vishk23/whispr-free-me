@@ -72,6 +72,50 @@ struct ElevenLabsClient {
         return voiceID
     }
 
+    /// Calls ElevenLabs text-to-speech and returns the raw MP3 Data.
+    ///
+    /// - Parameters:
+    ///   - text: The text to synthesize.
+    ///   - voiceID: The ElevenLabs voice ID (percent-encoded into the URL path).
+    /// - Throws: `ElevenLabsError.missingKey` when the API key is empty,
+    ///           `ElevenLabsError.badResponse` when the voiceID is empty or the
+    ///           URL cannot be constructed, `ElevenLabsError.http` on non-200 responses.
+    /// - Returns: Raw MP3 audio data.
+    func synthesizeSpeech(text: String, voiceID: String) async throws -> Data {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw ElevenLabsError.missingKey }
+
+        let trimmedVoiceID = voiceID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedVoiceID.isEmpty else { throw ElevenLabsError.badResponse }
+
+        let encodedVoiceID = trimmedVoiceID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? trimmedVoiceID
+        guard let endpoint = URL(string: "\(baseURL)/v1/text-to-speech/\(encodedVoiceID)") else {
+            throw ElevenLabsError.badResponse
+        }
+
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue(trimmedKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("audio/mpeg", forHTTPHeaderField: "Accept")
+
+        let bodyPayload: [String: String] = ["text": text, "model_id": "eleven_multilingual_v2"]
+        request.httpBody = try JSONSerialization.data(withJSONObject: bodyPayload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ElevenLabsError.badResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let bodyString = String(data: data, encoding: .utf8) ?? "(empty)"
+            throw ElevenLabsError.http(httpResponse.statusCode, bodyString)
+        }
+
+        return data
+    }
+
     // MARK: - Private
 
     private func makeMultipartBody(name: String, audioFileURLs: [URL], boundary: String) throws -> Data {

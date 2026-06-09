@@ -164,6 +164,15 @@ struct MenuBarView: View {
                     .frame(maxWidth: 280, alignment: .leading)
             }
 
+            if !appState.clonedVoiceID.isEmpty {
+                Button {
+                    appState.speakClipboard()
+                } label: {
+                    Label("Speak Clipboard in My Voice", systemImage: "speaker.wave.2")
+                }
+                .disabled(appState.isSpeaking)
+            }
+
             Menu("History") {
                 if recentHistoryItems.isEmpty {
                     Text("No transcripts yet")
