@@ -14,6 +14,15 @@ struct DashboardMetrics {
     let avgSpeakingWPM: Double
     let voiceBankMinutes: Double
 
+    // Richer insight fields
+    let avgWordsPerDictation: Double
+    /// Dictation count for the current ISO week
+    let dictationsThisWeek: Int
+    /// Dictation count for the previous ISO week
+    let dictationsLastWeek: Int
+    /// Name of the weekday with the most dictations (e.g. "Tuesday"), or nil if no history
+    let busiestWeekday: String?
+
     static let empty = DashboardMetrics(
         totalDictations: 0,
         totalWords: 0,
@@ -24,7 +33,11 @@ struct DashboardMetrics {
         activityLast30Days: [],
         topApps: [],
         avgSpeakingWPM: 0,
-        voiceBankMinutes: 0
+        voiceBankMinutes: 0,
+        avgWordsPerDictation: 0,
+        dictationsThisWeek: 0,
+        dictationsLastWeek: 0,
+        busiestWeekday: nil
     )
 
     static func compute(
@@ -116,6 +129,33 @@ struct DashboardMetrics {
         // --- voice bank minutes ---
         let voiceBankMinutes = Double(voiceBankStats.totalDurationMs) / 60_000.0
 
+        // --- avg words per dictation ---
+        let avgWordsPerDictation: Double = totalDictations > 0
+            ? Double(totalWords) / Double(totalDictations)
+            : 0
+
+        // --- this week vs last week dictation counts (ISO weeks) ---
+        let prevWeekStart: Date = cal.date(byAdding: .weekOfYear, value: -1, to: weekStart) ?? weekStart
+        let dictationsThisWeek = history.filter { $0.timestamp >= weekStart }.count
+        let dictationsLastWeek = history.filter { $0.timestamp >= prevWeekStart && $0.timestamp < weekStart }.count
+
+        // --- busiest weekday ---
+        // Count dictations per weekday (1=Sunday … 7=Saturday in Gregorian).
+        var weekdayCounts: [Int: Int] = [:]
+        for item in history {
+            let weekday = cal.component(.weekday, from: item.timestamp)
+            weekdayCounts[weekday, default: 0] += 1
+        }
+        let busiestWeekday: String? = weekdayCounts
+            .max(by: { $0.value < $1.value })
+            .flatMap { weekdayIndex, _ -> String? in
+                // DateFormatter weekdaySymbols is 0-indexed (0=Sunday).
+                let symbols = DateFormatter().weekdaySymbols ?? []
+                let idx = weekdayIndex - 1   // convert 1-based to 0-based
+                guard symbols.indices.contains(idx) else { return nil }
+                return symbols[idx]
+            }
+
         return DashboardMetrics(
             totalDictations: totalDictations,
             totalWords: totalWords,
@@ -126,7 +166,11 @@ struct DashboardMetrics {
             activityLast30Days: activityLast30Days,
             topApps: topApps,
             avgSpeakingWPM: avgSpeakingWPM,
-            voiceBankMinutes: voiceBankMinutes
+            voiceBankMinutes: voiceBankMinutes,
+            avgWordsPerDictation: avgWordsPerDictation,
+            dictationsThisWeek: dictationsThisWeek,
+            dictationsLastWeek: dictationsLastWeek,
+            busiestWeekday: busiestWeekday
         )
     }
 }

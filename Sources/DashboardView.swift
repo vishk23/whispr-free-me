@@ -1,8 +1,29 @@
 import SwiftUI
 import Charts
 
+// MARK: - Dashboard tab enum
+
+enum DashboardTab: String, CaseIterable, Identifiable {
+    case stats      = "Stats"
+    case dictionary = "Dictionary"
+    case snippets   = "Snippets"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .stats:      return "chart.bar.fill"
+        case .dictionary: return "text.book.closed.fill"
+        case .snippets:   return "text.badge.plus"
+        }
+    }
+}
+
+// MARK: - Root view
+
 struct DashboardView: View {
     @EnvironmentObject var appState: AppState
+    @State private var selectedTab: DashboardTab = .stats
 
     private var metrics: DashboardMetrics {
         DashboardMetrics.compute(
@@ -13,46 +34,81 @@ struct DashboardView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // ── Persistent header ──
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Your Voice")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                Text("Dictation activity and voice bank stats")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 24)
+            .padding(.bottom, 16)
+
+            // ── Tab switcher ──
+            Picker("Tab", selection: $selectedTab) {
+                ForEach(DashboardTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 16)
+
+            Divider()
+
+            // ── Tab content ──
+            Group {
+                switch selectedTab {
+                case .stats:
+                    DashboardStatsTab(metrics: metrics)
+                case .dictionary:
+                    DashboardDictionaryTab()
+                case .snippets:
+                    DashboardSnippetsTab()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 720, height: 620)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+// MARK: - Stats tab
+
+private struct DashboardStatsTab: View {
+    let metrics: DashboardMetrics
+
+    var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                headerSection
                 statCardsSection
+                insightRowSection
                 activityChartSection
                 topAppsSection
                 voiceBankReadinessSection
             }
             .padding(24)
         }
-        .frame(width: 720, height: 560)
-        .background(Color(NSColor.windowBackgroundColor))
     }
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Your Voice")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-            Text("Dictation activity and voice bank stats")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: - Stat Cards
+    // MARK: Stat cards
 
     private var statCardsSection: some View {
-        let m = metrics
-        return LazyVGrid(
+        LazyVGrid(
             columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
             spacing: 12
         ) {
-            StatCard(value: "\(m.totalDictations)", label: "Total dictations")
-            StatCard(value: "\(m.totalWords)", label: "Total words")
-            StatCard(value: formatTimeSaved(m.timeSavedMinutes), label: "Time saved")
-            StatCard(value: m.currentStreakDays > 0 ? "\(m.currentStreakDays) 🔥" : "0", label: "Day streak")
-            StatCard(value: m.avgSpeakingWPM > 0 ? "\(Int(m.avgSpeakingWPM))" : "—", label: "Avg speaking WPM")
-            StatCard(value: String(format: "%.1f min", m.voiceBankMinutes), label: "Minutes banked")
+            StatCard(value: "\(metrics.totalDictations)", label: "Total dictations")
+            StatCard(value: "\(metrics.totalWords)", label: "Total words")
+            StatCard(value: formatTimeSaved(metrics.timeSavedMinutes), label: "Time saved")
+            StatCard(value: metrics.currentStreakDays > 0 ? "\(metrics.currentStreakDays) 🔥" : "0", label: "Day streak")
+            StatCard(value: metrics.avgSpeakingWPM > 0 ? "\(Int(metrics.avgSpeakingWPM))" : "—", label: "Avg speaking WPM")
+            StatCard(value: String(format: "%.1f min", metrics.voiceBankMinutes), label: "Minutes banked")
         }
     }
 
@@ -66,12 +122,46 @@ struct DashboardView: View {
         return "\(hours) hr \(mins) min"
     }
 
-    // MARK: - Activity Chart
+    // MARK: Insight row
+
+    private var insightRowSection: some View {
+        HStack(spacing: 12) {
+            // Avg words per dictation
+            InsightCard(
+                icon: "text.word.spacing",
+                value: metrics.avgWordsPerDictation > 0
+                    ? String(format: "%.0f", metrics.avgWordsPerDictation)
+                    : "—",
+                label: "Avg words / dictation"
+            )
+
+            // This week vs last week
+            let delta = metrics.dictationsThisWeek - metrics.dictationsLastWeek
+            let arrow: String = delta > 0 ? "↑" : (delta < 0 ? "↓" : "→")
+            let deltaColor: Color = delta > 0 ? .green : (delta < 0 ? .red : .secondary)
+            InsightCard(
+                icon: "calendar.badge.clock",
+                value: "\(metrics.dictationsThisWeek)",
+                label: "This week",
+                badge: delta != 0
+                    ? "\(arrow) \(abs(delta)) vs last wk"
+                    : (metrics.dictationsLastWeek == 0 ? "same as last wk" : "same as last wk"),
+                badgeColor: deltaColor
+            )
+
+            // Busiest weekday
+            InsightCard(
+                icon: "star.fill",
+                value: metrics.busiestWeekday ?? "—",
+                label: "Busiest weekday"
+            )
+        }
+    }
+
+    // MARK: Activity chart
 
     private var activityChartSection: some View {
-        let m = metrics
-        // Show last 14 days for readability.
-        let recent = Array(m.activityLast30Days.suffix(14))
+        let recent = Array(metrics.activityLast30Days.suffix(14))
         return GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Recent activity")
@@ -116,7 +206,7 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - Top Apps
+    // MARK: Top apps
 
     private var topAppsSection: some View {
         let apps = metrics.topApps
@@ -162,7 +252,7 @@ struct DashboardView: View {
         })
     }
 
-    // MARK: - Voice Bank Readiness
+    // MARK: Voice bank readiness
 
     private var voiceBankReadinessSection: some View {
         let minutes = metrics.voiceBankMinutes
@@ -196,7 +286,215 @@ struct DashboardView: View {
     }
 }
 
-// MARK: - Subviews
+// MARK: - Dictionary tab
+
+struct DashboardDictionaryTab: View {
+    @EnvironmentObject var appState: AppState
+    @State private var newTerm: String = ""
+
+    /// Split delimiter matches PostProcessingService.mergedVocabularyTerms — newline, comma, or semicolon.
+    private var terms: [String] {
+        appState.customVocabulary
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func joinTerms(_ list: [String]) -> String {
+        list.joined(separator: "\n")
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Header
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "text.book.closed.fill")
+                                .foregroundStyle(.secondary)
+                            Text("Custom Dictionary")
+                                .font(.headline)
+                        }
+                        Text("Words, names, or technical terms that should always be spelled correctly. Whispr uses these during transcription cleanup.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        // Add row
+                        HStack(spacing: 8) {
+                            TextField("Add a word or name…", text: $newTerm)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { addTerm() }
+                            Button("Add") { addTerm() }
+                                .disabled(newTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Term list
+                if terms.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "text.book.closed")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.tertiary)
+                        Text("No custom terms yet")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Text("Add names, acronyms, or domain words above so Whispr always spells them right.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                } else {
+                    GroupBox {
+                        VStack(spacing: 1) {
+                            ForEach(Array(terms.enumerated()), id: \.offset) { index, term in
+                                HStack {
+                                    Text(term)
+                                        .font(.body)
+                                    Spacer()
+                                    Button {
+                                        deleteTerm(at: index)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                            .foregroundStyle(.red.opacity(0.8))
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Remove \(term)")
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Color(NSColor.controlBackgroundColor)
+                                        .opacity(index.isMultiple(of: 2) ? 0.5 : 0.8)
+                                )
+                                if index < terms.count - 1 {
+                                    Divider().padding(.leading, 12)
+                                }
+                            }
+                        }
+                        .cornerRadius(8)
+                        .padding(0)
+                    }
+                }
+            }
+            .padding(24)
+        }
+    }
+
+    private func addTerm() {
+        let trimmed = newTerm.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Avoid duplicates (case-insensitive)
+        guard !terms.contains(where: { $0.lowercased() == trimmed.lowercased() }) else {
+            newTerm = ""
+            return
+        }
+        var updated = terms
+        updated.append(trimmed)
+        appState.customVocabulary = joinTerms(updated)
+        newTerm = ""
+    }
+
+    private func deleteTerm(at index: Int) {
+        var updated = terms
+        guard updated.indices.contains(index) else { return }
+        updated.remove(at: index)
+        appState.customVocabulary = joinTerms(updated)
+    }
+}
+
+// MARK: - Snippets tab
+
+struct DashboardSnippetsTab: View {
+    @EnvironmentObject var appState: AppState
+    @State private var showingEditor = false
+    @State private var editingMacro: VoiceMacro?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Header
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            HStack(spacing: 8) {
+                                Image(systemName: "text.badge.plus")
+                                    .foregroundStyle(.secondary)
+                                Text("Voice Snippets")
+                                    .font(.headline)
+                            }
+                            Spacer()
+                            Button {
+                                editingMacro = nil
+                                showingEditor = true
+                            } label: {
+                                Label("Add Snippet", systemImage: "plus")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                        Text("Say the trigger phrase while dictating and Whispr will instantly paste the full expansion — no post-processing needed.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Macro list
+                if appState.voiceMacros.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "music.mic")
+                            .font(.system(size: 32))
+                            .foregroundStyle(.tertiary)
+                        Text("No snippets yet")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                        Text("Add a snippet above. Say its trigger and Whispr pastes the full text immediately.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 32)
+                } else {
+                    GroupBox {
+                        VStack(spacing: 1) {
+                            ForEach(Array(appState.voiceMacros.enumerated()), id: \.element.id) { index, macro in
+                                SnippetRow(
+                                    macro: macro,
+                                    isLast: index == appState.voiceMacros.count - 1,
+                                    rowTint: index.isMultiple(of: 2) ? 0.5 : 0.8,
+                                    onEdit: {
+                                        editingMacro = macro
+                                        showingEditor = true
+                                    },
+                                    onDelete: {
+                                        appState.voiceMacros.removeAll { $0.id == macro.id }
+                                    }
+                                )
+                            }
+                        }
+                        .cornerRadius(8)
+                        .padding(0)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .sheet(isPresented: $showingEditor, onDismiss: { editingMacro = nil }) {
+            VoiceMacroEditorView(isPresented: $showingEditor, macro: $editingMacro)
+                .environmentObject(appState)
+        }
+    }
+}
+
+// MARK: - Shared subviews
 
 private struct StatCard: View {
     let value: String
@@ -214,6 +512,87 @@ private struct StatCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(NSColor.controlBackgroundColor))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 1)
+        )
+    }
+}
+
+// Extracted to help the type-checker with complex nested closures in DashboardSnippetsTab.
+private struct SnippetRow: View {
+    let macro: VoiceMacro
+    let isLast: Bool
+    let rowTint: Double
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(macro.command)
+                        .font(.subheadline.weight(.semibold))
+                    Text(macro.payload)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+                Spacer()
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(.red.opacity(0.8))
+                }
+                .buttonStyle(.borderless)
+                .help("Delete \(macro.command)")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(Color(NSColor.controlBackgroundColor).opacity(rowTint))
+            if !isLast {
+                Divider().padding(.leading, 12)
+            }
+        }
+    }
+}
+
+private struct InsightCard: View {
+    let icon: String
+    let value: String
+    let label: String
+    var badge: String? = nil
+    var badgeColor: Color = .secondary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(value)
+                .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            if let badge {
+                Text(badge)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(badgeColor)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color(NSColor.controlBackgroundColor))
