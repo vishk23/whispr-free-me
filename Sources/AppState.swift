@@ -496,12 +496,29 @@ final class AppState: ObservableObject, @unchecked Sendable {
     }
 
     private let voiceBankEnabledStorageKey = "voiceBankEnabled"
+    private let elevenLabsAPIKeyStorageKey = "elevenlabs_api_key"
+    private let elevenLabsVoiceIDStorageKey = "elevenlabs_voice_id"
 
     @Published var voiceBankEnabled: Bool {
         didSet {
             UserDefaults.standard.set(voiceBankEnabled, forKey: voiceBankEnabledStorageKey)
         }
     }
+
+    @Published var elevenLabsAPIKey: String {
+        didSet {
+            persistOptionalAPIValue(elevenLabsAPIKey, account: elevenLabsAPIKeyStorageKey)
+        }
+    }
+
+    @Published var clonedVoiceID: String {
+        didSet {
+            persistOptionalAPIValue(clonedVoiceID, account: elevenLabsVoiceIDStorageKey)
+        }
+    }
+
+    @Published var voiceCloneStatus: String = ""
+    @Published var isCreatingVoiceClone = false
 
     @Published var isPressEnterVoiceCommandEnabled: Bool {
         didSet {
@@ -678,6 +695,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
             ? UserDefaults.standard.bool(forKey: alertSoundsEnabledStorageKey)
             : soundVolume > 0
         
+        let elevenLabsAPIKey = Self.loadOptionalStoredAPIValue(account: elevenLabsAPIKeyStorageKey)
+        let clonedVoiceID = Self.loadOptionalStoredAPIValue(account: elevenLabsVoiceIDStorageKey)
+
         let initialMacros: [VoiceMacro]
         if let data = UserDefaults.standard.data(forKey: "voice_macros"),
            let decoded = try? JSONDecoder().decode([VoiceMacro].self, from: data) {
@@ -737,6 +757,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.shortcutStartDelay = shortcutStartDelay
         self.preserveClipboard = preserveClipboard
         self.voiceBankEnabled = UserDefaults.standard.bool(forKey: voiceBankEnabledStorageKey)
+        self.elevenLabsAPIKey = elevenLabsAPIKey
+        self.clonedVoiceID = clonedVoiceID
         self.realtimeStreamingEnabled = realtimeStreamingEnabled
         self.realtimeStreamingModel = realtimeStreamingModel
         self.dictationAudioInterruptionEnabled = dictationAudioInterruptionEnabled
@@ -1115,6 +1137,73 @@ final class AppState: ObservableObject, @unchecked Sendable {
     func deleteVoiceSample(id: UUID) { voiceBank.delete(id: id) }
 
     func deleteAllVoiceBank() { voiceBank.deleteAll() }
+
+    // MARK: - Voice Clone
+
+    /// Returns the best selection of banked samples for ElevenLabs Instant Voice Cloning.
+    /// Sorts by durationMs descending (longest clips carry the most voice data), then
+    /// accumulates until total audio exceeds maxMinutes or 25 clips are reached.
+    func selectedVoiceCloneSamples(maxMinutes: Double = 5) -> [VoiceSample] {
+        let samples = voiceBankSamples()
+        let sorted = samples.sorted { $0.durationMs > $1.durationMs }
+        let maxMs = Int(maxMinutes * 60 * 1000)
+        var accumulated = 0
+        var result: [VoiceSample] = []
+        for sample in sorted {
+            if result.count >= 25 { break }
+            if accumulated >= maxMs { break }
+            result.append(sample)
+            accumulated += sample.durationMs
+        }
+        return result
+    }
+
+    func createVoiceClone() async {
+        let key = elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            await MainActor.run {
+                voiceCloneStatus = "Enter your ElevenLabs API key above before creating a clone."
+            }
+            return
+        }
+
+        let samples = selectedVoiceCloneSamples()
+        guard !samples.isEmpty else {
+            await MainActor.run {
+                voiceCloneStatus = "No voice bank samples found. Dictate more to build your voice bank first."
+            }
+            return
+        }
+
+        await MainActor.run {
+            isCreatingVoiceClone = true
+            voiceCloneStatus = "Uploading \(samples.count) clip\(samples.count == 1 ? "" : "s")…"
+        }
+
+        let audioFileURLs = samples.map { voiceBankAudioURL(for: $0) }
+        let client = ElevenLabsClient(apiKey: key)
+        do {
+            let voiceID = try await client.createInstantVoiceClone(
+                name: "My Voice (Whispr Free Me)",
+                audioFileURLs: audioFileURLs
+            )
+            await MainActor.run {
+                clonedVoiceID = voiceID
+                voiceCloneStatus = "Your voice is ready. Voice ID saved."
+                isCreatingVoiceClone = false
+            }
+        } catch let elevenErr as ElevenLabsError {
+            await MainActor.run {
+                voiceCloneStatus = "Failed: \(elevenErr.localizedDescription)"
+                isCreatingVoiceClone = false
+            }
+        } catch {
+            await MainActor.run {
+                voiceCloneStatus = "Failed: \(error.localizedDescription)"
+                isCreatingVoiceClone = false
+            }
+        }
+    }
 
     func deleteHistoryEntry(id: UUID) {
         guard let index = pipelineHistory.firstIndex(where: { $0.id == id }) else { return }

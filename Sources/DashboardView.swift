@@ -4,17 +4,19 @@ import Charts
 // MARK: - Dashboard tab enum
 
 enum DashboardTab: String, CaseIterable, Identifiable {
-    case stats      = "Stats"
-    case dictionary = "Dictionary"
-    case snippets   = "Snippets"
+    case stats       = "Stats"
+    case dictionary  = "Dictionary"
+    case snippets    = "Snippets"
+    case voiceClone  = "Voice Clone"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .stats:      return "chart.bar.fill"
-        case .dictionary: return "text.book.closed.fill"
-        case .snippets:   return "text.badge.plus"
+        case .stats:       return "chart.bar.fill"
+        case .dictionary:  return "text.book.closed.fill"
+        case .snippets:    return "text.badge.plus"
+        case .voiceClone:  return "waveform.badge.plus"
         }
     }
 }
@@ -69,6 +71,8 @@ struct DashboardView: View {
                     DashboardDictionaryTab()
                 case .snippets:
                     DashboardSnippetsTab()
+                case .voiceClone:
+                    DashboardVoiceCloneTab()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -490,6 +494,161 @@ struct DashboardSnippetsTab: View {
         .sheet(isPresented: $showingEditor, onDismiss: { editingMacro = nil }) {
             VoiceMacroEditorView(isPresented: $showingEditor, macro: $editingMacro)
                 .environmentObject(appState)
+        }
+    }
+}
+
+// MARK: - Voice Clone tab
+
+struct DashboardVoiceCloneTab: View {
+    @EnvironmentObject var appState: AppState
+    @State private var showConfirmation = false
+
+    private var selectedSamples: [VoiceSample] {
+        appState.selectedVoiceCloneSamples()
+    }
+
+    private var totalMinutes: Double {
+        Double(selectedSamples.reduce(0) { $0 + $1.durationMs }) / 60_000.0
+    }
+
+    private var canCreate: Bool {
+        !appState.elevenLabsAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !selectedSamples.isEmpty
+            && !appState.isCreatingVoiceClone
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+
+                // Intro card
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "waveform.badge.plus")
+                                .foregroundStyle(.secondary)
+                            Text("Create My Voice")
+                                .font(.headline)
+                        }
+                        Text("Turn your banked voice into a cloud voice clone with ElevenLabs.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // API key entry
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ElevenLabs API Key")
+                            .font(.subheadline.weight(.medium))
+                        SecureField("Paste your API key here", text: $appState.elevenLabsAPIKey)
+                            .textFieldStyle(.roundedBorder)
+                        Text("Get a key at elevenlabs.io → Profile → API Keys")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Readiness
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Voice Bank Readiness")
+                            .font(.subheadline.weight(.medium))
+
+                        let stats = appState.voiceBankStats()
+                        let bankMinutes = Double(stats.totalDurationMs) / 60_000.0
+
+                        HStack {
+                            Label(String(format: "%.1f min banked", bankMinutes), systemImage: "waveform")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if selectedSamples.isEmpty {
+                                Text("No samples yet")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Will upload \(selectedSamples.count) clip\(selectedSamples.count == 1 ? "" : "s") (\(String(format: "%.1f", totalMinutes)) min)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Create button + status
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button {
+                            showConfirmation = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                if appState.isCreatingVoiceClone {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(appState.isCreatingVoiceClone ? "Creating…" : "Create My Voice")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canCreate)
+                        .confirmationDialog(
+                            "Upload Voice Samples to ElevenLabs?",
+                            isPresented: $showConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Upload and Create Clone", role: .none) {
+                                Task { await appState.createVoiceClone() }
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text(
+                                "This uploads \(selectedSamples.count) clip\(selectedSamples.count == 1 ? "" : "s") (\(String(format: "%.1f", totalMinutes)) minutes) of your recorded voice to ElevenLabs to create a voice clone. Continue?"
+                            )
+                        }
+
+                        if !appState.voiceCloneStatus.isEmpty {
+                            Text(appState.voiceCloneStatus)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                // Show voice ID if available
+                if !appState.clonedVoiceID.isEmpty {
+                    GroupBox {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Your Voice ID")
+                                .font(.subheadline.weight(.medium))
+                            HStack(spacing: 8) {
+                                Text(appState.clonedVoiceID)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(appState.clonedVoiceID, forType: .string)
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Copy voice ID to clipboard")
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .padding(24)
         }
     }
 }
