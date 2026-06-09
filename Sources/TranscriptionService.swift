@@ -287,35 +287,21 @@ class TranscriptionService {
     }
 
     // Whisper-large-v3 hallucinates common short phrases on silence/background
-    // noise. Drop them when whisper itself reports a high no_speech_prob.
-    // Add a new (phrase, minNoSpeechProb) pair here to filter more hallucinations.
-    //
-    // Thresholds tuned on ~500 samples from quiet and noisy environments, including
-    // both positive cases (real "thank you" speech) and empty-audio cases. Kept
-    // conservative to minimize false positives (filtering real user speech).
-    // Normal speech included audios have very low no_speech_prob.
-    private let hallucinationPhrases = [
-        "thank you",
-        "thank you for watching",
-        "thank you very much",
-        "thank you so much",
-        "thanks for watching",
-        "please subscribe",
-        "like and subscribe",
-        "subtitles by",
-        "subtitles by the amara.org community",
-        "you"
-    ]
-
-    private let hallucinationNoSpeechThreshold = 0.1
-
+    // noise. HallucinationFilter strips trailing hallucinated segments
+    // (identified by a high no_speech_prob on that segment) while preserving
+    // real speech that happens to precede them.
     private func parseTranscript(from data: Data) throws -> String {
         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let text = json["text"] as? String {
-            if isHallucination(text: text, json: json) {
-                return ""
+            let rawSegments = (json["segments"] as? [[String: Any]]) ?? []
+            let segments = rawSegments.map {
+                WhisperSegment(text: $0["text"] as? String ?? "", noSpeechProb: $0["no_speech_prob"] as? Double)
             }
-            return text
+            let cleaned = HallucinationFilter.strip(text: text, segments: segments)
+            if cleaned != text {
+                os_log(.info, log: transcriptionLog, "stripped trailing hallucination: %{public}@ -> %{public}@", text, cleaned)
+            }
+            return cleaned
         }
 
         let plainText = String(data: data, encoding: .utf8) ?? ""
@@ -328,36 +314,6 @@ class TranscriptionService {
         }
 
         return text
-    }
-
-    private func isHallucination(text: String, json: [String: Any]) -> Bool {
-        let normalized = text
-            .lowercased()
-            .trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
-        guard hallucinationPhrases.contains(normalized) else {
-            return false
-        }
-
-        guard let segments = json["segments"] as? [[String: Any]] else {
-            os_log(
-                .info,
-                log: transcriptionLog,
-                "Skipping hallucination filter for '%{public}@': provider response has no segments/no_speech metadata",
-                normalized
-            )
-            return false
-        }
-
-        guard let noSpeechProb = segments.first?["no_speech_prob"] as? Double else {
-            os_log(
-                .info,
-                log: transcriptionLog,
-                "Skipping hallucination filter for '%{public}@': provider response omitted no_speech_prob",
-                normalized
-            )
-            return false
-        }
-        return noSpeechProb >= hallucinationNoSpeechThreshold
     }
 }
 

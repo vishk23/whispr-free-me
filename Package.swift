@@ -11,5 +11,11 @@ let package = Package(
             dependencies: ["VoiceBank"],
             path: "Tests/VoiceBankTests"
         ),
+        .target(name: "Transcription", path: "Sources/Transcription"),
+        .testTarget(
+            name: "TranscriptionTests",
+            dependencies: ["Transcription"],
+            path: "Tests/TranscriptionTests"
+        ),
     ]
 )
