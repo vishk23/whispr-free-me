@@ -542,6 +542,22 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private var audioPlayer: AVAudioPlayer?
     private var audioPlayerDelegate: AVAudioPlayerDelegateHandler?
 
+    // MARK: - Speak Selection Hotkey (⌥⌘S) — independent of dictation shortcuts
+    private let speakSelectionHotkeyStorageKey = "speak_selection_enabled"
+
+    @Published var speakSelectionEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(speakSelectionEnabled, forKey: speakSelectionHotkeyStorageKey)
+            if speakSelectionEnabled {
+                speakSelectionHotkey.start()
+            } else {
+                speakSelectionHotkey.stop()
+            }
+        }
+    }
+
+    private let speakSelectionHotkey = SpeakSelectionHotkey()
+
     @Published var isPressEnterVoiceCommandEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isPressEnterVoiceCommandEnabled, forKey: pressEnterVoiceCommandStorageKey)
@@ -779,6 +795,10 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.shortcutStartDelay = shortcutStartDelay
         self.preserveClipboard = preserveClipboard
         self.voiceBankEnabled = UserDefaults.standard.bool(forKey: voiceBankEnabledStorageKey)
+        let speakSelectionEnabled = UserDefaults.standard.object(forKey: speakSelectionHotkeyStorageKey) == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: speakSelectionHotkeyStorageKey)
+        self.speakSelectionEnabled = speakSelectionEnabled
         self.elevenLabsAPIKey = elevenLabsAPIKey
         self.clonedVoiceID = clonedVoiceID
         self.realtimeStreamingEnabled = realtimeStreamingEnabled
@@ -1287,6 +1307,20 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
+    // MARK: - Speak Selection Hotkey handler
+
+    /// Called by `speakSelectionHotkey.onTrigger` when ⌥⌘S is pressed.
+    /// Reads the frontmost app's selected text via Accessibility and speaks it.
+    private func handleSpeakSelectionHotkey() {
+        let snapshot = contextService.collectSelectionSnapshot()
+        let text = snapshot.selectedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else {
+            speakStatus = "No text selected — highlight some text first."
+            return
+        }
+        Task { await speakAsMe(text: text) }
+    }
+
     func deleteHistoryEntry(id: UUID) {
         guard let index = pipelineHistory.firstIndex(where: { $0.id == id }) else { return }
         do {
@@ -1789,6 +1823,14 @@ final class AppState: ObservableObject, @unchecked Sendable {
             self?.handleEscapeKeyPress() ?? false
         }
         restartHotkeyMonitoring()
+
+        // Speak-selection hotkey — fully independent of the dictation shortcut path.
+        speakSelectionHotkey.onTrigger = { [weak self] in
+            self?.handleSpeakSelectionHotkey()
+        }
+        if speakSelectionEnabled {
+            speakSelectionHotkey.start()
+        }
     }
 
     func stopHotkeyMonitoring() {

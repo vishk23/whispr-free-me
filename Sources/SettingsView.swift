@@ -685,6 +685,9 @@ struct GeneralSettingsView: View {
                 SettingsCard("Voice Bank", icon: "waveform.badge.mic") {
                     voiceBankSection
                 }
+                SettingsCard("Speak Selection", icon: "speaker.wave.2.fill") {
+                    speakSelectionSection
+                }
                 SettingsCard("Build", icon: "info.circle.fill") {
                     buildInfoSection
                 }
@@ -1461,6 +1464,21 @@ struct GeneralSettingsView: View {
                     .padding(.vertical, 4)
                 }
             }
+        }
+    }
+
+    // MARK: Speak Selection
+
+    private var speakSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Speak selected text (⌥⌘S)", isOn: $appState.speakSelectionEnabled)
+
+            Text("""
+            Press ⌥⌘S in any app to hear the highlighted text in your cloned voice \
+            (requires your ElevenLabs key + a cloned voice).
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
     }
 
