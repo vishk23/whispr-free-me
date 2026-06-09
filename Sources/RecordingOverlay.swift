@@ -644,7 +644,7 @@ struct WaveformView: View {
             ForEach(0..<Self.barCount, id: \.self) { index in
                 WaveformBar(amplitude: barAmplitude(for: index, pulseTime: pulseTime))
                     .animation(
-                        .spring(response: 0.14, dampingFraction: 0.82),
+                        .spring(response: 0.22, dampingFraction: 0.85),
                         value: levelHistory
                     )
             }
@@ -976,7 +976,8 @@ private func chipColor(for modeName: String?) -> Color {
     }
 }
 
-/// Full chip: tinted Capsule background + icon + label. Used in the drop-down pill layout.
+/// Icon-only chip: tinted Capsule background + colored icon. Used in the drop-down pill layout.
+/// Text label removed to prevent truncation in the narrow left slot.
 struct ModeChipView: View {
     let modeName: String
     let modeIcon: String
@@ -984,18 +985,13 @@ struct ModeChipView: View {
     private var color: Color { chipColor(for: modeName) }
 
     var body: some View {
-        HStack(spacing: 3.5) {
-            Image(systemName: modeIcon)
-                .font(.system(size: 9, weight: .semibold))
-            Text(modeName)
-                .font(.system(size: 10, weight: .semibold))
-                .lineLimit(1)
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2.5)
-        .background(Capsule().fill(color.opacity(0.22)))
-        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+        Image(systemName: modeIcon)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2.5)
+            .background(Capsule().fill(color.opacity(0.22)))
+            .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
 }
 

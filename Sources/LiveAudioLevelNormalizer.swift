@@ -2,18 +2,18 @@ import Foundation
 
 struct LiveAudioLevelNormalizer {
     private static let minimumRMS: Float = 0.00001
-    private static let minSpanDB: Float = 14          // tighter span → small sounds move bars more (was 18)
+    private static let minSpanDB: Float = 17          // wider span → less jitter on small sounds (was 14)
     private static let peakHeadroomDB: Float = 8
     private static let speechGateMarginDB: Float = 2  // quieter speech above floor counts as active (was 3)
-    private static let minimumVisibleActiveLevel: Float = 0.20 // whispers show clearly (was 0.12)
+    private static let minimumVisibleActiveLevel: Float = 0.14 // whispers show clearly (was 0.20)
     private static let noiseGateNormalizedThreshold: Float = 0.06 // keep: true silence stays flat
     private static let floorRiseWindowDB: Float = 4
     private static let floorFallBlend: Float = 0.12
     private static let floorRiseBlend: Float = 0.02
     private static let peakAttackBlend: Float = 0.55
     private static let peakReleaseBlend: Float = 0.04
-    private static let displayAttackBlend: Float = 0.6  // snappier attack (was 0.45)
-    private static let displayReleaseBlend: Float = 0.18 // snappier release (was 0.12)
+    private static let displayAttackBlend: Float = 0.45  // calmer attack (was 0.6)
+    private static let displayReleaseBlend: Float = 0.13 // calmer release (was 0.18)
 
     private var noiseFloorDB: Float = -55
     private var peakCeilingDB: Float = -37
