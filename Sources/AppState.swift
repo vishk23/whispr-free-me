@@ -2783,6 +2783,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 let transcript = rawTranscript
                 let bundleId = context.bundleIdentifier
                 let bank = voiceBank
+                // The WAV copy runs off-main; the Core Data insert hops back to the
+                // main-queue viewContext via performAndWait (cheap at this volume).
                 DispatchQueue.global(qos: .utility).async {
                     bank.bankIfEligible(
                         sourceWavURL: sourceURL,

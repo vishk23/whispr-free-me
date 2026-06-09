@@ -91,6 +91,31 @@ final class VoiceBankTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
+    func testBanksNothingAndLeavesNoOrphanWhenStoreUnavailable() throws {
+        let base = tempDir()
+        // Sabotage the store: put a DIRECTORY exactly where the SQLite file must
+        // go, so Core Data fails to load and `insert` throws.
+        let bankDir = base.appendingPathComponent("VoiceBank", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: bankDir.appendingPathComponent("VoiceBank.sqlite"),
+            withIntermediateDirectories: true
+        )
+        let bank = VoiceBank(baseDirectory: base)
+        let source = try makeWav(seconds: 1.5, in: tempDir())
+
+        let result = bank.bankIfEligible(
+            sourceWavURL: source,
+            transcript: "this should not bank",
+            intent: "dictation",
+            appBundleId: nil
+        )
+
+        XCTAssertNil(result)
+        let wavs = try FileManager.default.contentsOfDirectory(atPath: bankDir.path)
+            .filter { $0.hasSuffix(".wav") }
+        XCTAssertEqual(wavs, [], "no orphan WAV should remain when the store insert fails")
+    }
+
     func testDeleteAllEmptiesStoreAndDirectory() throws {
         let base = tempDir()
         let bank = VoiceBank(baseDirectory: base)

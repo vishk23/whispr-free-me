@@ -1,6 +1,10 @@
 import CoreData
 import Foundation
 
+enum VoiceBankError: Error, Equatable {
+    case storeUnavailable
+}
+
 struct VoiceBankStats: Equatable {
     let count: Int
     let totalDurationMs: Int
@@ -42,7 +46,7 @@ final class VoiceBankStore {
     }
 
     func insert(_ sample: VoiceSample) throws {
-        guard isLoaded else { return }
+        guard isLoaded else { throw VoiceBankError.storeUnavailable }
         var thrown: Error?
         container.viewContext.performAndWait {
             let entity = VoiceSampleEntry(context: container.viewContext)

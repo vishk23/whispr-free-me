@@ -1410,10 +1410,11 @@ struct GeneralSettingsView: View {
                 .disabled(stats.count == 0)
             }
 
-            if !appState.voiceBankSamples().isEmpty {
+            let samples = appState.voiceBankSamples()
+            if !samples.isEmpty {
                 Divider()
 
-                ForEach(appState.voiceBankSamples()) { sample in
+                ForEach(samples) { sample in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(sample.transcript)
