@@ -4,3 +4,9 @@ build/
 .env
 .build/
 .swiftpm/
+
+# codealmanac
+.almanac/index.db
+.almanac/index.db-wal
+.almanac/index.db-shm
+.almanac/runs/
