@@ -18,9 +18,26 @@ files:
 ## Build
 No Xcode project. [[Makefile]] globs `Sources/**/*.swift` and builds with a raw `swiftc`
 invocation (`-target arm64-apple-macosx13.0`). A separate [[Package.swift]] defines SwiftPM
-targets for the AppKit-free, unit-testable logic: `VoiceBank`, `Transcription`
-(the `HallucinationFilter`), and the in-progress `DictationModeKit`. Run logic tests with
-`swift test`; build the app with `make ARCH=$(uname -m)`.
+targets for the AppKit-free, unit-testable logic. On `main`/`phase-0-voice-bank`: `VoiceBank`,
+`Transcription` (the `HallucinationFilter`), and `replay`. On the `ios-voice-keyboard` branch:
+also `DictationModeKit`. On `ios-keyboard-foundation`: also `Pipeline` and `IOSShared`. Run
+logic tests with `swift test`; build the app with `make ARCH=$(uname -m)`.
+
+## GOTCHA: dual-build trap — every file under Sources/ compiles twice
+
+The Makefile flat-compiles all of `Sources/` into the macOS app **and** SPM compiles the same
+files as named module targets for `swift test`. A file in `Sources/Pipeline/` is built BOTH as
+the `Pipeline` SPM module and flat into the macOS binary. Two consequences:
+
+1. **Conditional imports**: `import Transcription` inside `Sources/Pipeline/` must be wrapped in
+   `#if canImport(Transcription)` — in the flat macOS build there is no separate module, so the
+   bare import fails.
+2. **IOSShared excluded**: `Sources/IOSShared/` is excluded from the Makefile glob with
+   `-not -path 'Sources/IOSShared/*'`. It contains iOS-only Darwin/App-Group glue; including it
+   in the flat macOS app would cause binary pollution and flat-build name collisions.
+
+If you add a new SPM-only target directory under `Sources/`, check whether the Makefile should
+exclude it. See [[ios-voice-keyboard]] for the full context of why these targets exist.
 
 ## DECISION: sign with a stable Developer ID so TCC grants survive rebuilds
 Fn dictation uses a `CGEvent.tapCreate` event tap, which needs **Accessibility** permission.

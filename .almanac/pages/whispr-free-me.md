@@ -64,6 +64,16 @@ and **Speak**. Reads `appState.pipelineHistory` + `voiceBankStats()` + `voiceBan
 ## Voice clone + speak-as-me
 ElevenLabs integration — see [[voice-cloning]].
 
+## iOS voice keyboard (planned)
+A Wispr Flow-style iOS custom keyboard that reuses this app's transcription and cleanup pipeline.
+The containing app holds the mic (keyboard extensions cannot); the keyboard extension is a thin
+front-end communicating via App Group + Darwin notifications. A Live Activity (Dynamic Island)
+surfaces the session. Transcription is batch per-utterance via the existing Groq pipeline.
+Cloud sync and accounts are deliberately deferred to a later project; v1 is local-only. The
+shared `Pipeline` + `IOSShared` SPM foundation (Phases 1–2 of the plan) is built and reviewed
+on branch `ios-keyboard-foundation` (72 tests green). See [[ios-voice-keyboard]] for constraints,
+IPC design, branch map, and what remains (needs Xcode + physical device + Apple Developer Program).
+
 ## Build, signing, gotchas
 See [[gotchas-and-decisions]] for code signing, the okay-hallucination fix, the cold-start silence
 guards (`capturedAudioWasSilent` / `isSilentClipFiller`), the honest start cue and cue-before-duck

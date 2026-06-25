@@ -1,20 +1,62 @@
 ---
 title: iOS voice keyboard
+summary: Architecture decisions, platform constraints, and foundation code (Phases 1–2) for the planned Wispr-style iOS voice keyboard that reuses the macOS dictation pipeline.
 topics: [voice-pipeline, decisions, build-and-signing]
-files:
-  - docs/superpowers/specs/2026-06-09-ios-voice-keyboard-design.md
-  - docs/superpowers/plans/2026-06-09-ios-voice-keyboard.md
-  - Package.swift
-  - Makefile
-  - Sources/Pipeline/CleanupConfig.swift
-  - Sources/Pipeline/PostProcessingService.swift
-  - Sources/Pipeline/TranscriptionService.swift
-  - Sources/IOSShared/DictationPayload.swift
-  - Sources/IOSShared/SessionSnapshot.swift
-  - Sources/IOSShared/SyncableSettings.swift
-  - Sources/IOSShared/AppGroup.swift
-  - Sources/IOSShared/DarwinBridge.swift
-  - Sources/IOSShared/DarwinNames.swift
+sources:
+  - id: spec
+    type: file
+    path: docs/superpowers/specs/2026-06-09-ios-voice-keyboard-design.md
+    note: Design spec — architecture, constraints, IPC model, Live Activity, scope.
+  - id: plan
+    type: file
+    path: docs/superpowers/plans/2026-06-09-ios-voice-keyboard.md
+    note: Phased implementation plan (Phases 0–9); Phases 1–2 completed in-environment.
+  - id: package-swift
+    type: file
+    path: Package.swift
+    note: ios-keyboard-foundation branch adds Pipeline + IOSShared targets with platforms [macOS .v13, iOS .v17].
+  - id: makefile
+    type: file
+    path: Makefile
+    note: Excludes Sources/IOSShared/ from the flat swiftc glob (iOS-only glue must not enter the macOS app build).
+  - id: cleanup-config
+    type: file
+    path: Sources/Pipeline/CleanupConfig.swift
+    note: Injected value type bundling cleanup policy so iOS and macOS feed the pipeline identically.
+  - id: post-processing
+    type: file
+    path: Sources/Pipeline/PostProcessingService.swift
+    note: Made public on ios-keyboard-foundation for cross-module iOS consumption.
+  - id: transcription-service
+    type: file
+    path: Sources/Pipeline/TranscriptionService.swift
+    note: Made public on ios-keyboard-foundation; Foundation-only, no AppKit.
+  - id: ios-shared-payload
+    type: file
+    path: Sources/IOSShared/DictationPayload.swift
+    note: Result handoff struct (carries requestId) between containing app and keyboard extension.
+  - id: ios-shared-snapshot
+    type: file
+    path: Sources/IOSShared/SessionSnapshot.swift
+    note: Cross-process session state (DictationState enum + SessionSnapshot).
+  - id: ios-shared-settings
+    type: file
+    path: Sources/IOSShared/SyncableSettings.swift
+    note: Versioned, forward-tolerant settings Codable — keys aligned with macOS UserDefaults for future sync.
+  - id: ios-shared-appgroup
+    type: file
+    path: Sources/IOSShared/AppGroup.swift
+    note: Injectable UserDefaults wrapper for App Group id group.com.vishk23.whisprfreeme.
+  - id: ios-shared-darwin
+    type: file
+    path: Sources/IOSShared/DarwinBridge.swift
+    note: CFNotificationCenter post/observe helpers for app↔keyboard IPC.
+  - id: ios-shared-names
+    type: file
+    path: Sources/IOSShared/DarwinNames.swift
+    note: Darwin notification name constants shared across app targets.
+status: active
+verified: 2026-06-09
 ---
 
 # iOS voice keyboard
