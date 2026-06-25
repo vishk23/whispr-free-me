@@ -1,11 +1,28 @@
 ---
 title: Voice Bank
+summary: The opt-in local corpus of (audio, transcript) pairs that feeds voice cloning; explains storage, quality gate, selection heuristic, and corpus statistics.
 topics: [voice-bank, decisions]
-files:
-  - Sources/VoiceBank/VoiceBankStore.swift
-  - Sources/VoiceBank/VoiceSample.swift
-  - Sources/VoiceBank/VoiceBankQualityGate.swift
-  - Tools/replay/main.swift
+sources:
+  - id: voice-bank-store
+    type: file
+    path: Sources/VoiceBank/VoiceBankStore.swift
+    note: Core Data store for VoiceSampleEntry rows.
+  - id: voice-sample
+    type: file
+    path: Sources/VoiceBank/VoiceSample.swift
+    note: Entity definition with id, createdAt, audioFileName, transcript, durationMs, wordCount, appBundleId.
+  - id: quality-gate
+    type: file
+    path: Sources/VoiceBank/VoiceBankQualityGate.swift
+    note: Drops silent/too-short/non-dictation clips.
+  - id: replay-tool
+    type: file
+    path: Tools/replay/main.swift
+    note: SwiftPM regression harness; re-runs banked WAVs through transcription.
+  - id: app-state-selection
+    type: file
+    path: Sources/AppState.swift
+    note: selectedVoiceCloneSamples() — clip selection algorithm for clone upload.
 ---
 
 # Voice Bank
@@ -39,3 +56,29 @@ not match the audio; voice/STT training needs transcript == audio.
 `GROQ_API_KEY`) that re-runs banked WAVs through the real transcription endpoint + the
 `HallucinationFilter`, printing raw vs cleaned. It was built to verify the okay-hallucination fix
 on the user's actual clips, and is the project's regression tester for transcription changes.
+
+## Corpus snapshot (as of 2026-06-22)
+
+After 14 days of normal dictation use (Jun 9–Jun 22), the bank held:
+
+| Metric | Value |
+|---|---|
+| Clips | 350 WAVs |
+| Total duration | 73.0 min |
+| Words (raw transcript) | 11,624 |
+| Avg clip length | 12.5 s |
+| Disk | 139 MB (16 kHz WAV) |
+
+**Source app breakdown** (where the user was dictating):
+
+| App bundle ID | Clips |
+|---|---|
+| com.anthropic.claudefordesktop | 263 |
+| com.openai.chat | 47 |
+| com.apple.MobileSMS | 26 |
+| com.apple.Safari | 10 |
+| com.google.Chrome | 4 |
+
+Confirmed via `sqlite3 VoiceBank.sqlite` on `ZVOICESAMPLEENTRY` — the store and on-disk WAVs agreed. The quality gate had already filtered silent/too-short/non-dictation clips; these 350 are the kept ones.
+
+**For voice cloning context:** ElevenLabs Instant Voice Cloning uses only ~5 minutes as a reference and ignores the rest. At 73 min, the bank is past the saturation point for instant cloning and well into the range for **fine-tuning / Professional Voice Cloning** approaches. See [[voice-cloning]] for selection algorithm and provider alternatives.
