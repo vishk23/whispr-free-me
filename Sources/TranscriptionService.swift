@@ -108,7 +108,10 @@ class TranscriptionService {
         let boundary = UUID().uuidString
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-        let audioData = try Data(contentsOf: fileURL)
+        // Cut trailing dead air before upload: Whisper hallucinates filler on it, and
+        // it's wasted bytes. The same trimmed data feeds the energy probe below so
+        // segment timestamps and audio evidence stay aligned.
+        let audioData = TrailingSilenceTrimmer.trim(wavData: try Data(contentsOf: fileURL))
         let body = makeMultipartBody(
             audioData: audioData,
             fileName: fileURL.lastPathComponent,
@@ -120,7 +123,12 @@ class TranscriptionService {
 
         do {
             let (data, response) = try await LLMAPITransport.upload(for: request, from: body)
-            return try validateTranscriptionResponse(data: data, response: response, fileURL: fileURL)
+            return try validateTranscriptionResponse(
+                data: data,
+                response: response,
+                fileURL: fileURL,
+                audioData: audioData
+            )
         } catch {
             let nsError = error as NSError
             os_log(
@@ -137,7 +145,12 @@ class TranscriptionService {
         }
     }
 
-    private func validateTranscriptionResponse(data: Data, response: URLResponse, fileURL: URL) throws -> String {
+    private func validateTranscriptionResponse(
+        data: Data,
+        response: URLResponse,
+        fileURL: URL,
+        audioData: Data? = nil
+    ) throws -> String {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TranscriptionError.submissionFailed("No response from server")
         }
@@ -159,7 +172,7 @@ class TranscriptionService {
             ))
         }
 
-        return try parseTranscript(from: data)
+        return try parseTranscript(from: data, audioData: audioData)
     }
     private func audioContentType(for fileName: String) -> String {
         if fileName.lowercased().hasSuffix(".wav") {
@@ -288,9 +301,11 @@ class TranscriptionService {
 
     // Whisper hallucinates short filler phrases ("Okay.", "Bye.", "Thank you.") at the
     // end of a clip. HallucinationFilter strips a trailing filler segment when Whisper
-    // flags it as silence OR it is a short, isolated trailing segment (the signature of a
-    // confident end-of-clip hallucination), preserving the real speech before it.
-    private func parseTranscript(from data: Data) throws -> String {
+    // flags it as silence, it is a short isolated trailing segment (the signature of a
+    // confident end-of-clip hallucination), or the recorded audio in the segment's window
+    // is silent — the audio evidence that separates a hallucinated "Thank you." from a
+    // deliberately spoken sign-off.
+    private func parseTranscript(from data: Data, audioData: Data? = nil) throws -> String {
         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let text = json["text"] as? String {
             let rawSegments = (json["segments"] as? [[String: Any]]) ?? []
@@ -302,7 +317,12 @@ class TranscriptionService {
                     end: $0["end"] as? Double
                 )
             }
-            let cleaned = HallucinationFilter.strip(text: text, segments: segments)
+            let probe = audioData.flatMap { WAVEnergyProbe(data: $0) }
+            let cleaned = HallucinationFilter.strip(
+                text: text,
+                segments: segments,
+                windowRMS: probe.map { probe in { probe.rms(start: $0, end: $1) } }
+            )
             if cleaned != text {
                 os_log(.info, log: transcriptionLog, "stripped trailing hallucination: %{public}@ -> %{public}@", text, cleaned)
             }

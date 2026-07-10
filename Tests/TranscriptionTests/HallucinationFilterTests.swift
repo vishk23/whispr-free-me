@@ -107,4 +107,81 @@ final class HallucinationFilterTests: XCTestCase {
         let result = HallucinationFilter.strip(text: "Hello world Okay.", segments: segments)
         XCTAssertEqual(result, "Hello world Okay.")
     }
+
+    // MARK: - energy evidence: confident trailing "Thank you." over silent audio
+
+    func testConfidentTrailingThankYouOverSilentAudioIsStripped() {
+        // The real-world signature (history entry 839): Whisper appends " Thank you." as its
+        // own confident (no_speech_prob 0.0) segment, but the recorded audio in that window
+        // is silence — the speaker had already stopped. With energy evidence, it strips.
+        let segments: [WhisperSegment] = [
+            WhisperSegment(text: "Because, yeah.", noSpeechProb: 0.0, start: 0, end: 5.0),
+            WhisperSegment(text: " Thank you.", noSpeechProb: 0.0, start: 5.0, end: 5.8),
+        ]
+        let result = HallucinationFilter.strip(
+            text: "Because, yeah. Thank you.",
+            segments: segments,
+            windowRMS: { start, _ in start >= 5.0 ? 0.001 : 0.08 }
+        )
+        XCTAssertEqual(result, "Because, yeah.")
+    }
+
+    func testTrailingThankYouWithVoiceEnergyIsKept() {
+        // A deliberately spoken "Thank you." sign-off has real voice energy in its window.
+        let segments: [WhisperSegment] = [
+            WhisperSegment(text: "Best regards", noSpeechProb: 0.0, start: 0, end: 1.0),
+            WhisperSegment(text: " Thank you.", noSpeechProb: 0.0, start: 1.0, end: 1.7),
+        ]
+        let result = HallucinationFilter.strip(
+            text: "Best regards Thank you.",
+            segments: segments,
+            windowRMS: { _, _ in 0.05 }
+        )
+        XCTAssertEqual(result, "Best regards Thank you.")
+    }
+
+    func testNonFillerTrailingSegmentOverSilentAudioIsKept() {
+        // Energy evidence never strips text that isn't a known filler phrase, even if the
+        // window reads silent (mis-timestamped real speech must survive).
+        let segments: [WhisperSegment] = [
+            WhisperSegment(text: "Hello world", noSpeechProb: 0.0, start: 0, end: 2.0),
+            WhisperSegment(text: " see you at the office", noSpeechProb: 0.0, start: 2.0, end: 3.0),
+        ]
+        let result = HallucinationFilter.strip(
+            text: "Hello world see you at the office",
+            segments: segments,
+            windowRMS: { _, _ in 0.0001 }
+        )
+        XCTAssertEqual(result, "Hello world see you at the office")
+    }
+
+    func testThankYouWithoutTimestampsFallsBackToSilenceOnlyBehavior() {
+        // No start/end on the segment → the window can't be probed → the conservative
+        // silence-only rule applies and the sign-off survives.
+        let segments: [WhisperSegment] = [
+            WhisperSegment(text: "Best regards", noSpeechProb: 0.0),
+            WhisperSegment(text: " Thank you.", noSpeechProb: 0.0),
+        ]
+        let result = HallucinationFilter.strip(
+            text: "Best regards Thank you.",
+            segments: segments,
+            windowRMS: { _, _ in 0.0001 }
+        )
+        XCTAssertEqual(result, "Best regards Thank you.")
+    }
+
+    func testCascadeStripsFillerRunOverSilentTail() {
+        // Multiple trailing fillers over a silent tail all strip; real speech is preserved.
+        let segments: [WhisperSegment] = [
+            WhisperSegment(text: "Ship it today.", noSpeechProb: 0.0, start: 0, end: 3.0),
+            WhisperSegment(text: " Okay.", noSpeechProb: 0.0, start: 3.0, end: 3.4),
+            WhisperSegment(text: " Thank you.", noSpeechProb: 0.0, start: 3.4, end: 4.1),
+        ]
+        let result = HallucinationFilter.strip(
+            text: "Ship it today. Okay. Thank you.",
+            segments: segments,
+            windowRMS: { start, _ in start >= 3.0 ? 0.0008 : 0.09 }
+        )
+        XCTAssertEqual(result, "Ship it today.")
+    }
 }

@@ -35,6 +35,10 @@ public enum HallucinationFilter {
     /// merely *contain* a filler word are not their own short segment, so duration
     /// discriminates the artifact from genuine speech.
     static let maxFillerDuration = 1.5
+    /// Window mean-RMS below this is silence: no voice was recorded during the segment,
+    /// so a confident filler there is hallucinated. Raw samples normalized to [-1, 1];
+    /// whispered speech measures >= ~0.01, ambient room noise <= ~0.005.
+    public static let energySilenceFloor: Float = 0.006
 
     public static func normalize(_ s: String) -> String {
         s.lowercased().trimmingCharacters(in: CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines))
@@ -45,7 +49,11 @@ public enum HallucinationFilter {
     /// OR it is a short, isolated trailing segment — the signature of a confidently
     /// hallucinated "Okay."/"Bye." appended after the speaker stops. Real speech preceding
     /// the filler is preserved.
-    public static func strip(text: String, segments: [WhisperSegment]) -> String {
+    public static func strip(
+        text: String,
+        segments: [WhisperSegment],
+        windowRMS: ((_ start: Double, _ end: Double) -> Float)? = nil
+    ) -> String {
         guard !segments.isEmpty else { return text } // can't confirm without segment data
         var kept = segments
         while let last = kept.last {
@@ -53,9 +61,20 @@ public enum HallucinationFilter {
             guard phrases.contains(normalized) else { break }
             let highSilence = (last.noSpeechProb ?? 0) >= noSpeechThreshold
             let shortTrailing = (last.duration ?? .greatestFiniteMagnitude) < maxFillerDuration
+            // Audio evidence beats Whisper's own confidence: if the recorded audio during
+            // this segment's window is silent, no one spoke it — a confident "Thank you."
+            // there is hallucinated. A deliberately spoken sign-off has voice energy and
+            // survives. Requires timestamps and a probe; otherwise falls back to the
+            // metadata-only rules.
+            let silentWindow: Bool
+            if let windowRMS, let start = last.start, let end = last.end, end > start {
+                silentWindow = windowRMS(start, end) < energySilenceFloor
+            } else {
+                silentWindow = false
+            }
             let strippable = silenceOnlyPhrases.contains(normalized)
-                ? highSilence
-                : (highSilence || shortTrailing)
+                ? (highSilence || silentWindow)
+                : (highSilence || shortTrailing || silentWindow)
             guard strippable else { break }
             kept.removeLast()
         }

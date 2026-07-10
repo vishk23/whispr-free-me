@@ -159,8 +159,13 @@ for wavURL in wavFiles {
 
     case .success(let result):
         let rawText = result.rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleaned = HallucinationFilter.strip(text: result.rawText, segments: result.segments)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let probe = WAVEnergyProbe(contentsOf: wavURL)
+        let cleaned = HallucinationFilter.strip(
+            text: result.rawText,
+            segments: result.segments,
+            windowRMS: probe.map { probe in { probe.rms(start: $0, end: $1) } }
+        )
+        .trimmingCharacters(in: .whitespacesAndNewlines)
 
         print("  raw: \(rawText)")
         if cleaned != rawText {
