@@ -233,11 +233,13 @@ final class AppState: ObservableObject, @unchecked Sendable {
     private let selectedMicrophoneStorageKey = "selected_microphone_id"
     private let customSystemPromptStorageKey = "custom_system_prompt"
     private let customContextPromptStorageKey = "custom_context_prompt"
+    private let instructionExecutionGuardEnabledStorageKey = "instruction_execution_guard_enabled"
     private let customSystemPromptLastModifiedStorageKey = "custom_system_prompt_last_modified"
     private let customContextPromptLastModifiedStorageKey = "custom_context_prompt_last_modified"
     private let contextScreenshotMaxDimensionStorageKey = "context_screenshot_max_dimension"
     private let shortcutStartDelayStorageKey = "shortcut_start_delay"
     private let preserveClipboardStorageKey = "preserve_clipboard"
+    private let keepDictationInClipboardHistoryStorageKey = "keep_dictation_in_clipboard_history"
     private let pressEnterVoiceCommandStorageKey = "press_enter_voice_command_enabled"
     private let alertSoundsEnabledStorageKey = "alert_sounds_enabled"
     private let soundVolumeStorageKey = "sound_volume"
@@ -442,6 +444,15 @@ final class AppState: ObservableObject, @unchecked Sendable {
         }
     }
 
+    @Published var instructionExecutionGuardEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(
+                instructionExecutionGuardEnabled,
+                forKey: instructionExecutionGuardEnabledStorageKey
+            )
+        }
+    }
+
     @Published var contextScreenshotMaxDimension: Int {
         didSet {
             let normalizedDimension = Self.normalizedContextScreenshotMaxDimension(contextScreenshotMaxDimension)
@@ -507,6 +518,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
     @Published var preserveClipboard: Bool {
         didSet {
             UserDefaults.standard.set(preserveClipboard, forKey: preserveClipboardStorageKey)
+        }
+    }
+
+    @Published var keepDictationInClipboardHistory: Bool {
+        didSet {
+            UserDefaults.standard.set(keepDictationInClipboardHistory, forKey: keepDictationInClipboardHistoryStorageKey)
         }
     }
 
@@ -699,6 +716,11 @@ final class AppState: ObservableObject, @unchecked Sendable {
         )
         let customSystemPrompt = UserDefaults.standard.string(forKey: customSystemPromptStorageKey) ?? ""
         let customContextPrompt = UserDefaults.standard.string(forKey: customContextPromptStorageKey) ?? ""
+        let instructionExecutionGuardEnabled = UserDefaults.standard.object(
+            forKey: instructionExecutionGuardEnabledStorageKey
+        ) == nil
+            ? true
+            : UserDefaults.standard.bool(forKey: instructionExecutionGuardEnabledStorageKey)
         let customSystemPromptLastModified = UserDefaults.standard.string(forKey: customSystemPromptLastModifiedStorageKey) ?? ""
         let customContextPromptLastModified = UserDefaults.standard.string(forKey: customContextPromptLastModifiedStorageKey) ?? ""
         let outputLanguage = UserDefaults.standard.string(forKey: outputLanguageStorageKey) ?? ""
@@ -719,6 +741,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         let preserveClipboard = UserDefaults.standard.object(forKey: preserveClipboardStorageKey) == nil
             ? true
             : UserDefaults.standard.bool(forKey: preserveClipboardStorageKey)
+        let keepDictationInClipboardHistory = UserDefaults.standard.bool(forKey: keepDictationInClipboardHistoryStorageKey)
         let realtimeStreamingEnabled = UserDefaults.standard.bool(forKey: realtimeStreamingEnabledStorageKey)
         let realtimeStreamingModel = UserDefaults.standard.string(forKey: realtimeStreamingModelStorageKey) ?? ""
         let dictationAudioInterruptionEnabled = UserDefaults.standard.bool(
@@ -788,6 +811,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.transcriptionLanguage = transcriptionLanguage
         self.customSystemPrompt = customSystemPrompt
         self.customContextPrompt = customContextPrompt
+        self.instructionExecutionGuardEnabled = instructionExecutionGuardEnabled
         self.contextScreenshotMaxDimension = contextScreenshotMaxDimension
         self.customSystemPromptLastModified = customSystemPromptLastModified
         self.customContextPromptLastModified = customContextPromptLastModified
@@ -801,6 +825,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         self.speakSelectionEnabled = speakSelectionEnabled
         self.elevenLabsAPIKey = elevenLabsAPIKey
         self.clonedVoiceID = clonedVoiceID
+        self.keepDictationInClipboardHistory = keepDictationInClipboardHistory
         self.realtimeStreamingEnabled = realtimeStreamingEnabled
         self.realtimeStreamingModel = realtimeStreamingModel
         self.dictationAudioInterruptionEnabled = dictationAudioInterruptionEnabled
@@ -1363,7 +1388,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
             apiKey: apiKey,
             baseURL: apiBaseURL,
             preferredModel: postProcessingModel,
-            preferredFallbackModel: postProcessingFallbackModel
+            preferredFallbackModel: postProcessingFallbackModel,
+            instructionExecutionGuardEnabled: instructionExecutionGuardEnabled
         )
         let capturedCustomVocabulary = customVocabulary
         let capturedCustomSystemPrompt = customSystemPrompt
@@ -1476,12 +1502,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
     func startAccessibilityPolling() {
         accessibilityTimer?.invalidate()
+        accessibilityTimer = nil
         hasAccessibility = AXIsProcessTrusted()
         hasScreenRecordingPermission = hasScreenCapturePermission()
+        if hasAccessibility && hasScreenRecordingPermission {
+            return
+        }
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             DispatchQueue.main.async {
-                self?.hasAccessibility = AXIsProcessTrusted()
-                self?.hasScreenRecordingPermission = self?.hasScreenCapturePermission() ?? false
+                guard let self else { return }
+                self.hasAccessibility = AXIsProcessTrusted()
+                self.hasScreenRecordingPermission = self.hasScreenCapturePermission()
+                if self.hasAccessibility && self.hasScreenRecordingPermission {
+                    self.accessibilityTimer?.invalidate()
+                    self.accessibilityTimer = nil
+                }
             }
         }
     }
@@ -2162,7 +2197,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
         startedAt: CFAbsoluteTime? = nil
     ) -> Bool {
         activeRecordingTriggerMode = triggerMode
-        guard hasAccessibility else {
+        let isAccessibilityTrusted = AXIsProcessTrusted()
+        hasAccessibility = isAccessibilityTrusted
+        guard isAccessibilityTrusted else {
             errorMessage = "Accessibility permission required. Grant access in System Settings > Privacy & Security > Accessibility."
             statusText = "No Accessibility"
             activeRecordingTriggerMode = nil
@@ -2519,6 +2556,57 @@ final class AppState: ObservableObject, @unchecked Sendable {
         return "Failed to start recording: \(error.localizedDescription)"
     }
 
+    /// Turn a transcription failure into a concise, user-facing message,
+    /// classifying by the locale-independent `URLError.Code` rather than the
+    /// system's English description (which varies across releases and locales).
+    private func formattedTranscriptionError(_ error: Error) -> String {
+        if let code = Self.urlErrorCode(in: error) {
+            switch code {
+            case .notConnectedToInternet, .networkConnectionLost,
+                 .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed:
+                return "No internet — check connection"
+            case .timedOut:
+                return NetworkMonitor.shared.isOnline
+                    ? "Request timed out — try again"
+                    : "No internet — check connection"
+            default:
+                break
+            }
+        }
+
+        let lower = error.localizedDescription.lowercased()
+        if lower.contains("timed out") || lower.contains("timeout") {
+            return NetworkMonitor.shared.isOnline
+                ? "Request timed out — try again"
+                : "No internet — check connection"
+        }
+        if lower.contains("offline") || lower.contains("internet connection")
+            || lower.contains("not connected") || lower.contains("network")
+            || lower.contains("cannot find host") {
+            return "No internet — check connection"
+        }
+        return error.localizedDescription
+    }
+
+    /// Find a `URLError.Code` anywhere in the error's underlying-error chain,
+    /// so a wrapped transport error is still classified by its root cause.
+    private static func urlErrorCode(in error: Error) -> URLError.Code? {
+        var current: Error? = error
+        var depth = 0
+        while let err = current, depth < 8 {
+            if let urlError = err as? URLError {
+                return urlError.code
+            }
+            let nsError = err as NSError
+            if nsError.domain == NSURLErrorDomain {
+                return URLError.Code(rawValue: nsError.code)
+            }
+            current = nsError.userInfo[NSUnderlyingErrorKey] as? Error
+            depth += 1
+        }
+        return nil
+    }
+
     func showMicrophonePermissionAlert() {
         let alert = NSAlert()
         alert.messageText = "Microphone Permission Required"
@@ -2788,7 +2876,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
             apiKey: apiKey,
             baseURL: apiBaseURL,
             preferredModel: postProcessingModel,
-            preferredFallbackModel: postProcessingFallbackModel
+            preferredFallbackModel: postProcessingFallbackModel,
+            instructionExecutionGuardEnabled: instructionExecutionGuardEnabled
         )
 
             let activeRealtime = self.realtimeService
@@ -2960,11 +3049,12 @@ final class AppState: ObservableObject, @unchecked Sendable {
                         guard self.isTranscribing else { return }
                         self.transcriptionTask = nil
                         self.transcribingAudioFileName = nil
-                        self.errorMessage = error.localizedDescription
+                        let userFacingErrorMessage = self.formattedTranscriptionError(error)
+                        self.errorMessage = userFacingErrorMessage
                         self.isTranscribing = false
                         self.endCriticalDictationActivity()
                         self.statusText = "Error"
-                        self.overlayManager.dismiss()
+                        self.overlayManager.showError(userFacingErrorMessage)
                         self.lastPostProcessedTranscript = ""
                         self.lastRawTranscript = ""
                         self.lastContextSummary = ""
@@ -3432,33 +3522,39 @@ final class AppState: ObservableObject, @unchecked Sendable {
             textToWrite = transcript
         }
 
-        // Declare standard transient types alongside .string so well-behaved
-        // clipboard managers (Maccy, Raycast, Paste, Clipy, Flycut, etc.) skip
-        // recording this entry in their history. The text still pastes normally
-        // via Cmd-V — only clipboard history is affected.
-        //
-        // See: https://github.com/nicke5012/TransientPasteboardType
-        let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
-        let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
-        let autoGeneratedType = NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType")
-        let legacyTransientType = NSPasteboard.PasteboardType("de.petermaurer.TransientPasteboardType")
+        if keepDictationInClipboardHistory {
+            // Plain write so clipboard managers record the dictation in history.
+            pasteboard.clearContents()
+            pasteboard.setString(textToWrite, forType: .string)
+        } else {
+            // Declare standard transient types alongside .string so well-behaved
+            // clipboard managers (Maccy, Raycast, Paste, Clipy, Flycut, etc.) skip
+            // recording this entry in their history. The text still pastes normally
+            // via Cmd-V — only clipboard history is affected.
+            //
+            // See: https://github.com/nicke5012/TransientPasteboardType
+            let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+            let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+            let autoGeneratedType = NSPasteboard.PasteboardType("org.nspasteboard.AutoGeneratedType")
+            let legacyTransientType = NSPasteboard.PasteboardType("de.petermaurer.TransientPasteboardType")
 
-        pasteboard.declareTypes([
-            .string,
-            transientType,
-            concealedType,
-            autoGeneratedType,
-            legacyTransientType
-        ], owner: nil)
+            pasteboard.declareTypes([
+                .string,
+                transientType,
+                concealedType,
+                autoGeneratedType,
+                legacyTransientType
+            ], owner: nil)
 
-        pasteboard.setString(textToWrite, forType: .string)
+            pasteboard.setString(textToWrite, forType: .string)
 
-        // Populate empty values for the marker types — some clipboard managers
-        // check the data presence rather than just the declared type.
-        pasteboard.setString("", forType: transientType)
-        pasteboard.setString("", forType: concealedType)
-        pasteboard.setString("", forType: autoGeneratedType)
-        pasteboard.setString("", forType: legacyTransientType)
+            // Populate empty values for the marker types — some clipboard managers
+            // check the data presence rather than just the declared type.
+            pasteboard.setString("", forType: transientType)
+            pasteboard.setString("", forType: concealedType)
+            pasteboard.setString("", forType: autoGeneratedType)
+            pasteboard.setString("", forType: legacyTransientType)
+        }
 
         guard let snapshot else { return nil }
         return PendingClipboardRestore(

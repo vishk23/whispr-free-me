@@ -7,6 +7,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var dashboardWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NetworkMonitor.shared.start()
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShowSetup),
