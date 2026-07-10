@@ -10,7 +10,11 @@ enum LLMAPITransport {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
         configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 30
+        // The resource timeout must exceed every per-request timeoutInterval callers
+        // set (transcription uploads configure their own), or it silently caps them
+        // and kills any transfer past 30s — long dictations and slow providers
+        // (upstream freeflow issue #253).
+        configuration.timeoutIntervalForResource = 600
         return URLSession(configuration: configuration)
     }
 

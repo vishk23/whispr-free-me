@@ -22,6 +22,10 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <!-- Menu-bar (LSUIElement) apps are eligible for automatic termination under
+         memory pressure, which killed recordings mid-dictation (upstream #178). -->
+    <key>NSSupportsAutomaticTermination</key>
+    <false/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Whispr Free Me needs microphone access to transcribe your speech.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
