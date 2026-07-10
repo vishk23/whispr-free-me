@@ -68,26 +68,99 @@ class TranscriptionService {
         }
     }
 
-    // Upload audio file, submit for transcription, poll until done, return text.
-    // If the provider is unreachable (offline, DNS failure, timeout) and the local
-    // whisper.cpp fallback is installed, transcribe on-device instead of failing.
+    /// Once the provider has been silent this long, local inference starts in
+    /// parallel (a hedged request) — whichever finishes first wins. Groq normally
+    /// answers in under a second, so the hedge rarely fires.
+    private static let localHedgeDelaySeconds: TimeInterval = 4
+
+    // Upload audio file, submit for transcription, return text.
+    //
+    // Local whisper is the safety net for EVERY remote failure — offline, DNS,
+    // 5xx, 429, auth/config errors, malformed responses — and a hedge timer covers
+    // the merely-slow provider. Only user cancellation propagates without a local
+    // attempt. When the local fallback isn't installed, behavior is unchanged.
     func transcribe(fileURL: URL) async throws -> String {
-        do {
+        guard LocalWhisperTranscriber.isAvailable else {
             return try await transcribeRemote(fileURL: fileURL)
-        } catch {
-            guard LocalWhisperTranscriber.isNetworkFailure(error),
-                  LocalWhisperTranscriber.isAvailable,
-                  !Task.isCancelled else { throw error }
-            os_log(
-                .info, log: transcriptionLog,
-                "cloud transcription unreachable (%{public}@) — falling back to local whisper",
-                error.localizedDescription
-            )
-            return try await LocalWhisperTranscriber.transcribe(
-                fileURL: fileURL,
-                language: language,
-                vocabularyTerms: vocabularyTerms
-            )
+        }
+
+        let localHedgeStarted = LockedFlag()
+        return try await withThrowingTaskGroup(of: TranscriptionRaceOutcome.self) { group in
+            group.addTask {
+                do { return .remote(.success(try await self.transcribeRemote(fileURL: fileURL))) }
+                catch { return .remote(.failure(error)) }
+            }
+            group.addTask { [language, vocabularyTerms] in
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(Self.localHedgeDelaySeconds * 1_000_000_000))
+                } catch {
+                    return .localHedgeSkipped // group cancelled — a winner already returned
+                }
+                localHedgeStarted.set()
+                os_log(
+                    .info, log: transcriptionLog,
+                    "provider silent for %.0fs — starting local whisper hedge",
+                    Self.localHedgeDelaySeconds
+                )
+                do {
+                    return .local(.success(try await LocalWhisperTranscriber.transcribe(
+                        fileURL: fileURL, language: language, vocabularyTerms: vocabularyTerms
+                    )))
+                } catch {
+                    return .local(.failure(error))
+                }
+            }
+
+            var remoteError: Error?
+            var localError: Error?
+            while let outcome = try await group.next() {
+                switch outcome {
+                case .remote(.success(let text)):
+                    group.cancelAll()
+                    return text
+                case .remote(.failure(let error)):
+                    if error is CancellationError {
+                        group.cancelAll()
+                        throw error
+                    }
+                    remoteError = error
+                    if let localError {
+                        // Hedge already ran and failed too — nothing left to try.
+                        throw remoteError ?? localError
+                    }
+                    if !localHedgeStarted.isSet {
+                        // Remote died before the hedge fired: go local immediately.
+                        group.cancelAll()
+                        os_log(
+                            .info, log: transcriptionLog,
+                            "cloud transcription failed (%{public}@) — falling back to local whisper",
+                            error.localizedDescription
+                        )
+                        return try await LocalWhisperTranscriber.transcribe(
+                            fileURL: fileURL, language: language, vocabularyTerms: vocabularyTerms
+                        )
+                    }
+                    // Hedge is mid-inference; let its result decide.
+                case .local(.success(let text)):
+                    group.cancelAll()
+                    if let remoteError {
+                        os_log(
+                            .info, log: transcriptionLog,
+                            "local whisper salvaged the dictation after remote failure: %{public}@",
+                            remoteError.localizedDescription
+                        )
+                    }
+                    return text
+                case .local(.failure(let error)):
+                    localError = error
+                    if let remoteError { throw remoteError }
+                    // Remote still in flight — it may yet succeed.
+                case .localHedgeSkipped:
+                    continue
+                }
+            }
+            throw remoteError ?? localError
+                ?? TranscriptionError.transcriptionFailed("No transcription result")
         }
     }
 
@@ -394,6 +467,26 @@ class TranscriptionService {
         }
 
         return text
+    }
+}
+
+private enum TranscriptionRaceOutcome {
+    case remote(Result<String, Error>)
+    case local(Result<String, Error>)
+    case localHedgeSkipped
+}
+
+/// Minimal thread-safe latch for coordinating the hedge race.
+private final class LockedFlag {
+    private let lock = NSLock()
+    private var value = false
+    var isSet: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return value
+    }
+    func set() {
+        lock.lock(); defer { lock.unlock() }
+        value = true
     }
 }
 

@@ -30,21 +30,6 @@ enum LocalWhisperTranscriber {
         binaryURL != nil && FileManager.default.fileExists(atPath: modelURL.path)
     }
 
-    /// True for errors where retrying the network is pointless but local inference
-    /// would succeed: connectivity loss, DNS failure, or a provider timeout.
-    static func isNetworkFailure(_ error: Error) -> Bool {
-        if case TranscriptionError.transcriptionTimedOut = error { return true }
-        guard let urlError = error as? URLError else { return false }
-        switch urlError.code {
-        case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
-             .cannotFindHost, .dnsLookupFailed, .timedOut, .dataNotAllowed,
-             .internationalRoamingOff, .secureConnectionFailed:
-            return true
-        default:
-            return false
-        }
-    }
-
     static func transcribe(
         fileURL: URL,
         language: String?,
@@ -98,31 +83,37 @@ enum LocalWhisperTranscriber {
     }
 
     private static func run(binary: URL, arguments: [String]) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let process = Process()
-            process.executableURL = binary
-            process.arguments = arguments
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
+        let process = Process()
+        process.executableURL = binary
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
 
-            let timeout = DispatchWorkItem { process.terminate() }
-            process.terminationHandler = { finished in
-                timeout.cancel()
-                if finished.terminationStatus == 0 {
-                    continuation.resume()
-                } else {
-                    continuation.resume(throwing: TranscriptionError.transcriptionFailed(
-                        "whisper-cli exited with status \(finished.terminationStatus)"
-                    ))
+        // Kill the CLI if the enclosing task is cancelled (e.g. the cloud race was
+        // won after the local hedge started) so it doesn't burn CPU to completion.
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let timeout = DispatchWorkItem { process.terminate() }
+                process.terminationHandler = { finished in
+                    timeout.cancel()
+                    if finished.terminationStatus == 0 {
+                        continuation.resume()
+                    } else {
+                        continuation.resume(throwing: TranscriptionError.transcriptionFailed(
+                            "whisper-cli exited with status \(finished.terminationStatus)"
+                        ))
+                    }
+                }
+                do {
+                    try process.run()
+                    DispatchQueue.global().asyncAfter(deadline: .now() + processTimeoutSeconds, execute: timeout)
+                } catch {
+                    timeout.cancel()
+                    continuation.resume(throwing: error)
                 }
             }
-            do {
-                try process.run()
-                DispatchQueue.global().asyncAfter(deadline: .now() + processTimeoutSeconds, execute: timeout)
-            } catch {
-                timeout.cancel()
-                continuation.resume(throwing: error)
-            }
+        } onCancel: {
+            if process.isRunning { process.terminate() }
         }
     }
 }
