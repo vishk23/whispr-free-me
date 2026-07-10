@@ -1527,18 +1527,21 @@ final class AppState: ObservableObject, @unchecked Sendable {
         accessibilityTimer?.invalidate()
         accessibilityTimer = nil
         hasAccessibility = AXIsProcessTrusted()
-        hasScreenRecordingPermission = hasScreenCapturePermission()
-        if hasAccessibility && hasScreenRecordingPermission {
-            return
-        }
-        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.hasAccessibility = AXIsProcessTrusted()
-                self.hasScreenRecordingPermission = self.hasScreenCapturePermission()
-                if self.hasAccessibility && self.hasScreenRecordingPermission {
-                    self.accessibilityTimer?.invalidate()
-                    self.accessibilityTimer = nil
+        refreshScreenRecordingPermission { [weak self] granted in
+            guard let self else { return }
+            if self.hasAccessibility && granted { return }
+            self.accessibilityTimer?.invalidate()
+            self.accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.hasAccessibility = AXIsProcessTrusted()
+                    self.refreshScreenRecordingPermission { [weak self] granted in
+                        guard let self else { return }
+                        if self.hasAccessibility && granted {
+                            self.accessibilityTimer?.invalidate()
+                            self.accessibilityTimer = nil
+                        }
+                    }
                 }
             }
         }
@@ -1594,21 +1597,39 @@ final class AppState: ObservableObject, @unchecked Sendable {
         CGPreflightScreenCaptureAccess()
     }
 
+    /// CGPreflightScreenCaptureAccess is unreliable on Sequoia and later — it can
+    /// report false for a rebuilt app while the "Screen & System Audio Recording"
+    /// grant is active. ScreenCaptureKit is the oracle: if SCShareableContent
+    /// enumerates without error, capture is authorized. Preflight stays as the
+    /// cheap fast-path for the common granted case.
+    func refreshScreenRecordingPermission(completion: ((Bool) -> Void)? = nil) {
+        if CGPreflightScreenCaptureAccess() {
+            hasScreenRecordingPermission = true
+            completion?(true)
+            return
+        }
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { [weak self] content, error in
+            DispatchQueue.main.async {
+                let granted = error == nil && content != nil
+                self?.hasScreenRecordingPermission = granted
+                completion?(granted)
+            }
+        }
+    }
+
     func requestScreenCapturePermission() {
         // ScreenCaptureKit triggers the "Screen & System Audio Recording"
         // permission dialog on macOS Sequoia+, correctly identifying the
         // running app (unlike the legacy CGWindowListCreateImage path).
-        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { [weak self] _, _ in
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { [weak self] content, error in
             DispatchQueue.main.async {
-                let granted = CGPreflightScreenCaptureAccess()
+                let granted = error == nil && content != nil
                 self?.hasScreenRecordingPermission = granted
                 if !granted {
                     self?.openScreenCaptureSettings()
                 }
             }
         }
-
-        hasScreenRecordingPermission = CGPreflightScreenCaptureAccess()
     }
 
     func openScreenCaptureSettings() {
