@@ -1072,8 +1072,17 @@ final class AppState: ObservableObject, @unchecked Sendable {
             apiKey: resolvedTranscriptionAPIKey,
             baseURL: resolvedTranscriptionBaseURL,
             transcriptionModel: transcriptionModel,
-            language: resolvedTranscriptionLanguage
+            language: resolvedTranscriptionLanguage,
+            vocabularyTerms: Self.vocabularyTerms(from: customVocabulary)
         )
+    }
+
+    /// Split delimiter matches PostProcessingService.mergedVocabularyTerms — newline, comma, or semicolon.
+    static func vocabularyTerms(from vocabulary: String) -> [String] {
+        vocabulary
+            .split(whereSeparator: { $0 == "\n" || $0 == "," || $0 == ";" })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private var resolvedTranscriptionLanguage: String? {
@@ -2791,14 +2800,24 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return (macro.payload, .voiceMacro(command: macro.command), "")
         }
 
-        if CleanupGate.shouldSkipCleanup(transcript: trimmedRawTranscript) {
-            os_log(.info, log: recordingLog, "Skipped cleanup for short transcript (%d chars)", trimmedRawTranscript.count)
-            return (trimmedRawTranscript, .skippedShortTranscript, "")
+        // Deterministic vocabulary enforcement before any LLM involvement, so the
+        // short-transcript fast path below also benefits from authoritative spellings.
+        let correctedTranscript = VocabularyCorrector.correct(
+            trimmedRawTranscript,
+            vocabulary: Self.vocabularyTerms(from: customVocabulary)
+        )
+        if correctedTranscript != trimmedRawTranscript {
+            os_log(.info, log: recordingLog, "vocabulary correction applied")
+        }
+
+        if CleanupGate.shouldSkipCleanup(transcript: correctedTranscript) {
+            os_log(.info, log: recordingLog, "Skipped cleanup for short transcript (%d chars)", correctedTranscript.count)
+            return (correctedTranscript, .skippedShortTranscript, "")
         }
 
         do {
             let result = try await postProcessingService.postProcess(
-                transcript: trimmedRawTranscript,
+                transcript: correctedTranscript,
                 context: context,
                 customVocabulary: customVocabulary,
                 customSystemPrompt: customSystemPrompt,
@@ -2807,7 +2826,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return (result.transcript, .postProcessingSucceeded, result.prompt)
         } catch {
             os_log(.error, log: recordingLog, "Post-processing failed: %{public}@", error.localizedDescription)
-            return (trimmedRawTranscript, .postProcessingFailedFallback, "")
+            return (correctedTranscript, .postProcessingFailedFallback, "")
         }
     }
 

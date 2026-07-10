@@ -8,7 +8,11 @@ class TranscriptionService {
     private let baseURL: URL
     private let transcriptionModel: String
     private let language: String?
+    private let vocabularyTerms: [String]
     private let transcriptionResponseFormat = "verbose_json"
+    /// Whisper's initial_prompt window is ~224 tokens; cap what we send so a huge
+    /// dictionary can't crowd it out.
+    private static let maxVocabularyPromptLength = 400
     private var transcriptionTimeoutSeconds: TimeInterval {
         let override = UserDefaults.standard.double(forKey: "transcription_timeout_seconds")
         return override > 0 ? override : 20
@@ -18,7 +22,8 @@ class TranscriptionService {
         apiKey: String,
         baseURL: String = "https://api.groq.com/openai/v1",
         transcriptionModel: String = "whisper-large-v3",
-        language: String? = nil
+        language: String? = nil,
+        vocabularyTerms: [String] = []
     ) throws {
         self.apiKey = apiKey
         self.baseURL = try Self.normalizedBaseURL(from: baseURL)
@@ -26,6 +31,22 @@ class TranscriptionService {
         self.transcriptionModel = trimmedModel.isEmpty ? "whisper-large-v3" : trimmedModel
         let trimmedLanguage = language?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.language = (trimmedLanguage?.isEmpty == false) ? trimmedLanguage : nil
+        self.vocabularyTerms = vocabularyTerms
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Comma-joined glossary sent as Whisper's initial prompt so names and jargon are
+    /// recognized at the source instead of patched afterwards.
+    private var vocabularyPrompt: String? {
+        guard !vocabularyTerms.isEmpty else { return nil }
+        var joined = ""
+        for term in vocabularyTerms {
+            let candidate = joined.isEmpty ? term : joined + ", " + term
+            guard candidate.count <= Self.maxVocabularyPromptLength else { break }
+            joined = candidate
+        }
+        return joined.isEmpty ? nil : joined
     }
 
     // Validate API key by hitting a lightweight endpoint
@@ -220,6 +241,12 @@ class TranscriptionService {
             append("\(language)\r\n")
         }
 
+        if let vocabularyPrompt {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+            append("\(vocabularyPrompt)\r\n")
+        }
+
         append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n")
         append("Content-Type: \(audioContentType(for: fileName))\r\n\r\n")
@@ -325,6 +352,12 @@ class TranscriptionService {
             )
             if cleaned != text {
                 os_log(.info, log: transcriptionLog, "stripped trailing hallucination: %{public}@ -> %{public}@", text, cleaned)
+            }
+            // Injecting a vocabulary prompt makes Whisper parrot it back on
+            // silent/noise-only clips; treat a prompt echo as an empty transcript.
+            if DictionaryEchoGuard.isEcho(transcript: cleaned, vocabulary: vocabularyTerms) {
+                os_log(.info, log: transcriptionLog, "dropped dictionary echo: %{public}@", cleaned)
+                return ""
             }
             return cleaned
         }
