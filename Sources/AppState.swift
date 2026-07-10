@@ -3215,6 +3215,9 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return
         }
         realtimeService = service
+        service.onPartialUpdate = { [weak self] text in
+            self?.overlayManager.updatePartialTranscript(text)
+        }
         audioRecorder.onPCM16Samples = { [weak service] data in
             service?.appendPCM16(data)
         }
@@ -3553,17 +3556,58 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// types for clipboard managers, and saving the clipboard state for later restoration.
     /// - Parameter transcript: The text to be pasted.
     /// - Returns: A `PendingClipboardRestore` object if clipboard preservation is enabled, otherwise nil.
+    /// Reads the character immediately before the insertion point in the focused
+    /// text element, so the paste can decide whether it needs a leading space.
+    /// Returns nil when there is no selection range, the caret is at position 0,
+    /// or the app doesn't expose AX text APIs (secure fields included).
+    private func characterBeforeInsertionPoint() -> Character? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let rawFocused = focusedRef,
+              CFGetTypeID(rawFocused) == AXUIElementGetTypeID() else { return nil }
+        let focused = unsafeDowncast(rawFocused as AnyObject, to: AXUIElement.self)
+
+        var rangeRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(focused, kAXSelectedTextRangeAttribute as CFString, &rangeRef) == .success,
+              let rawRange = rangeRef,
+              CFGetTypeID(rawRange) == AXValueGetTypeID() else { return nil }
+        var selection = CFRange()
+        guard AXValueGetValue(unsafeDowncast(rawRange as AnyObject, to: AXValue.self), .cfRange, &selection),
+              selection.location > 0 else { return nil }
+
+        var beforeRange = CFRange(location: selection.location - 1, length: 1)
+        guard let beforeValue = AXValueCreate(.cfRange, &beforeRange) else { return nil }
+        var stringRef: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+            focused,
+            kAXStringForRangeParameterizedAttribute as CFString,
+            beforeValue,
+            &stringRef
+        ) == .success, let string = stringRef as? String else { return nil }
+        return string.first
+    }
+
     private func writeTranscriptToPasteboard(_ transcript: String) -> PendingClipboardRestore? {
         let pasteboard = NSPasteboard.general
         let snapshot = preserveClipboard ? PreservedPasteboardSnapshot(pasteboard: pasteboard) : nil
 
         // Append a space when ending with sentence-ending punctuation so the
         // next dictation does not jam against the prior period.
-        let textToWrite: String
+        var textToWrite: String
         if let last = transcript.last, ".!?".contains(last) {
             textToWrite = transcript + " "
         } else {
             textToWrite = transcript
+        }
+
+        // Prepend a space when dictating mid-text directly after a word or closing
+        // punctuation, so the paste doesn't jam against existing content.
+        if SmartSpacing.needsLeadingSpace(
+            precedingCharacter: characterBeforeInsertionPoint(),
+            transcript: textToWrite
+        ) {
+            textToWrite = " " + textToWrite
         }
 
         if keepDictationInClipboardHistory {

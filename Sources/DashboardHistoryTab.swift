@@ -164,6 +164,13 @@ private struct HistoryRow: View {
         item.timestamp.formatted(date: .omitted, time: .shortened)
     }
 
+    /// True when the cleanup step errored or fell back to the raw transcript —
+    /// these are the entries worth re-transcribing.
+    private var isFailure: Bool {
+        let status = item.postProcessingStatus
+        return status.hasPrefix("Error:") || status.localizedCaseInsensitiveContains("failed")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             collapsedRow
@@ -189,13 +196,24 @@ private struct HistoryRow: View {
                     .font(.callout)
                     .lineLimit(isExpanded ? nil : 2)
                     .textSelection(.enabled)
-                if let app = item.contextAppName, !app.isEmpty {
-                    Text(app)
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.12)))
-                        .foregroundStyle(Color.accentColor)
+                HStack(spacing: 6) {
+                    if let app = item.contextAppName, !app.isEmpty {
+                        Text(app)
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    if isFailure {
+                        Label("Cleanup failed — pasted raw", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Capsule().fill(Color.red.opacity(0.12)))
+                            .foregroundStyle(.red)
+                            .help(item.postProcessingStatus)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

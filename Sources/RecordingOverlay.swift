@@ -13,6 +13,7 @@ final class RecordingOverlayState: ObservableObject {
     @Published var isCommandMode = false
     @Published var dictationModeName: String? = nil
     @Published var dictationModeIcon: String? = nil
+    @Published var partialTranscript: String = ""
     @Published var updateVersion: String = ""
     @Published var errorMessage: String?
     @Published var toastID: UUID?
@@ -165,7 +166,21 @@ final class RecordingOverlayManager {
             self.overlayState.dictationModeIcon = dictationModeIcon
             self.overlayState.phase = .recording
             self.overlayState.audioLevel = 0
+            self.overlayState.partialTranscript = ""
             self.showOverlayPanel(animatedResize: true)
+        }
+    }
+
+    /// Live transcript feed while recording (realtime streaming only). The pill
+    /// widens when the first partial arrives and shows the tail of the text.
+    func updatePartialTranscript(_ text: String) {
+        DispatchQueue.main.async {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let widthChanged = self.overlayState.partialTranscript.isEmpty != trimmed.isEmpty
+            self.overlayState.partialTranscript = trimmed
+            if widthChanged, self.overlayState.phase == .recording {
+                self.updateOverlayLayout(animated: true)
+            }
         }
     }
 
@@ -450,12 +465,15 @@ final class RecordingOverlayManager {
             return max(notchWidth, updateWidth)
         }
 
+        let liveTranscriptWidth: CGFloat = 380
         let commandModeWidth: CGFloat = 180
         let toggleWidth: CGFloat = 150
         let defaultWidth: CGFloat = 92
         let baseWidth: CGFloat
 
-        if overlayState.isCommandMode {
+        if overlayState.phase == .recording && !overlayState.partialTranscript.isEmpty {
+            baseWidth = liveTranscriptWidth
+        } else if overlayState.isCommandMode {
             baseWidth = commandModeWidth
         } else if overlayState.phase == .recording && overlayState.recordingTriggerMode == .toggle {
             baseWidth = toggleWidth
@@ -478,6 +496,7 @@ final class RecordingOverlayManager {
         overlayState.isCommandMode = false
         overlayState.dictationModeName = nil
         overlayState.dictationModeIcon = nil
+        overlayState.partialTranscript = ""
         overlayState.updateVersion = ""
         if let panel = overlayWindow {
             panel.orderOut(nil)
@@ -1089,6 +1108,24 @@ struct RecordingOverlayView: View {
                         if state.phase == .initializing {
                             InitializingDotsView()
                                 .transition(.opacity)
+                        } else if showsLiveRecordingContent, !state.partialTranscript.isEmpty {
+                            // Live transcript: waveform shrinks left, the streaming text
+                            // fills the rest, pinned to its tail like a caret following.
+                            HStack(spacing: 8) {
+                                WaveformView(
+                                    audioLevel: state.audioLevel,
+                                    levelHistory: state.audioLevelHistory,
+                                    showsActivityPulse: true
+                                )
+                                .fixedSize()
+                                Text(state.partialTranscript)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .lineLimit(1)
+                                    .truncationMode(.head)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .transition(.opacity)
                         } else if showsLiveRecordingContent {
                             WaveformView(
                                 audioLevel: state.audioLevel,
