@@ -1,6 +1,7 @@
 import Foundation
 import ApplicationServices
 import AppKit
+import ScreenCaptureKit
 
 struct AppSelectionSnapshot {
     let appName: String?
@@ -114,7 +115,7 @@ Return only two sentences, no labels, no markdown, no extra commentary.
 
         let windowTitle = focusedWindowTitle(from: appElement) ?? appName
         let selectedText = selectedText(from: appElement)
-        let screenshot = captureActiveWindowScreenshot(
+        let screenshot = await captureActiveWindowScreenshot(
             processIdentifier: frontmostApp.processIdentifier,
             appElement: appElement,
             focusedWindowTitle: windowTitle
@@ -411,8 +412,11 @@ Selected text: \(selectedText ?? "None")
         processIdentifier: pid_t,
         appElement: AXUIElement,
         focusedWindowTitle: String?
-    ) -> (dataURL: String?, mimeType: String?, error: String?) {
-        if !CGPreflightScreenCaptureAccess() {
+    ) async -> (dataURL: String?, mimeType: String?, error: String?) {
+        // On macOS 14+ ScreenCaptureKit is both the capture API and the
+        // authorization oracle — CGPreflightScreenCaptureAccess is unreliable for
+        // rebuilt apps, so a failed SCK capture is the real permission signal.
+        if #unavailable(macOS 14.0), !CGPreflightScreenCaptureAccess() {
             return (
                 nil,
                 nil,
@@ -481,7 +485,7 @@ Selected text: \(selectedText ?? "None")
                     return lhs.0.layer < rhs.0.layer
                 })
                     .first?.0 {
-                if let dataURL = captureWindowImage(
+                if let dataURL = await captureWindowImage(
                     windowID: activeWindow.id,
                     fileType: .jpeg,
                     mimeType: "image/jpeg",
@@ -515,7 +519,7 @@ Selected text: \(selectedText ?? "None")
                        return lhs.layer < rhs.layer
                    })
                    .first {
-                if let dataURL = captureWindowImage(
+                if let dataURL = await captureWindowImage(
                     windowID: activeWindow.id,
                     fileType: .jpeg,
                     mimeType: "image/jpeg",
@@ -527,12 +531,18 @@ Selected text: \(selectedText ?? "None")
             }
         }
 
-        guard let fullScreenImage = CGWindowListCreateImage(
-            CGRect.infinite,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            [.bestResolution]
-        ) else {
+        let fullScreenCapture: CGImage?
+        if #available(macOS 14.0, *) {
+            fullScreenCapture = await captureSCKImage(windowID: nil)
+        } else {
+            fullScreenCapture = CGWindowListCreateImage(
+                CGRect.infinite,
+                .optionOnScreenOnly,
+                kCGNullWindowID,
+                [.bestResolution]
+            )
+        }
+        guard let fullScreenImage = fullScreenCapture else {
             return (nil, nil, "Could not capture screenshot from the active window")
         }
 
@@ -550,19 +560,54 @@ Selected text: \(selectedText ?? "None")
         return (nil, nil, "Could not capture screenshot within size limits")
     }
 
+    /// ScreenCaptureKit capture path (macOS 14+): pass a windowID for a single
+    /// window, or nil for the main display. Returns nil when unauthorized or the
+    /// window is gone — callers treat that the same as a legacy capture failure.
+    @available(macOS 14.0, *)
+    private func captureSCKImage(windowID: CGWindowID?) async -> CGImage? {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(
+            false, onScreenWindowsOnly: true
+        ) else { return nil }
+
+        let filter: SCContentFilter
+        if let windowID, let window = content.windows.first(where: { $0.windowID == windowID }) {
+            filter = SCContentFilter(desktopIndependentWindow: window)
+        } else if let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
+                    ?? content.displays.first {
+            filter = SCContentFilter(display: display, excludingWindows: [])
+        } else {
+            return nil
+        }
+
+        let configuration = SCStreamConfiguration()
+        configuration.showsCursor = false
+        configuration.width = Int(filter.contentRect.width * CGFloat(filter.pointPixelScale))
+        configuration.height = Int(filter.contentRect.height * CGFloat(filter.pointPixelScale))
+        return try? await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: configuration
+        )
+    }
+
     private func captureWindowImage(
         windowID: CGWindowID,
         fileType: NSBitmapImageRep.FileType,
         mimeType: String,
         compression: Double? = nil,
         maxDimension: CGFloat? = nil
-    ) -> String? {
-        guard let image = CGWindowListCreateImage(
-            .null,
-            .optionIncludingWindow,
-            windowID,
-            [.bestResolution]
-        ) else {
+    ) async -> String? {
+        let capturedImage: CGImage?
+        if #available(macOS 14.0, *) {
+            capturedImage = await captureSCKImage(windowID: windowID)
+        } else {
+            capturedImage = CGWindowListCreateImage(
+                .null,
+                .optionIncludingWindow,
+                windowID,
+                [.bestResolution]
+            )
+        }
+        guard let image = capturedImage else {
             return nil
         }
 

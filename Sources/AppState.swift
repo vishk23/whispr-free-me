@@ -1531,16 +1531,19 @@ final class AppState: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             if self.hasAccessibility && granted { return }
             self.accessibilityTimer?.invalidate()
+            // The timer uses only the cheap preflight check: hitting ScreenCaptureKit
+            // every 2s can summon the system permission dialog repeatedly. The SCK
+            // verification runs once at launch (above) and on explicit user action.
             self.accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.hasAccessibility = AXIsProcessTrusted()
-                    self.refreshScreenRecordingPermission { [weak self] granted in
-                        guard let self else { return }
-                        if self.hasAccessibility && granted {
-                            self.accessibilityTimer?.invalidate()
-                            self.accessibilityTimer = nil
-                        }
+                    if CGPreflightScreenCaptureAccess() {
+                        self.hasScreenRecordingPermission = true
+                    }
+                    if self.hasAccessibility && self.hasScreenRecordingPermission {
+                        self.accessibilityTimer?.invalidate()
+                        self.accessibilityTimer = nil
                     }
                 }
             }
