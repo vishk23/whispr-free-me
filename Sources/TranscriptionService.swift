@@ -68,8 +68,30 @@ class TranscriptionService {
         }
     }
 
-    // Upload audio file, submit for transcription, poll until done, return text
+    // Upload audio file, submit for transcription, poll until done, return text.
+    // If the provider is unreachable (offline, DNS failure, timeout) and the local
+    // whisper.cpp fallback is installed, transcribe on-device instead of failing.
     func transcribe(fileURL: URL) async throws -> String {
+        do {
+            return try await transcribeRemote(fileURL: fileURL)
+        } catch {
+            guard LocalWhisperTranscriber.isNetworkFailure(error),
+                  LocalWhisperTranscriber.isAvailable,
+                  !Task.isCancelled else { throw error }
+            os_log(
+                .info, log: transcriptionLog,
+                "cloud transcription unreachable (%{public}@) — falling back to local whisper",
+                error.localizedDescription
+            )
+            return try await LocalWhisperTranscriber.transcribe(
+                fileURL: fileURL,
+                language: language,
+                vocabularyTerms: vocabularyTerms
+            )
+        }
+    }
+
+    private func transcribeRemote(fileURL: URL) async throws -> String {
         guard !Task.isCancelled else {
             throw CancellationError()
         }
