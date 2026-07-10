@@ -2774,6 +2774,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
         case skippedShortTranscript
         case voiceMacro(command: String)
         case postProcessingSucceeded
+        case postProcessedOnDevice
         case postProcessingFailedFallback
         case commandModeSucceeded(invocation: CommandInvocation)
         case commandModeFailedFallback(invocation: CommandInvocation)
@@ -2788,6 +2789,8 @@ final class AppState: ObservableObject, @unchecked Sendable {
                 return "Voice macro used: \(command)"
             case .postProcessingSucceeded:
                 return isRetry ? "Post-processing succeeded (retried)" : "Post-processing succeeded"
+            case .postProcessedOnDevice:
+                return "Cleaned on-device (cloud cleanup unreachable)"
             case .postProcessingFailedFallback:
                 return isRetry
                     ? "Post-processing failed on retry, using raw transcript"
@@ -2862,7 +2865,28 @@ final class AppState: ObservableObject, @unchecked Sendable {
             return (result.transcript, .postProcessingSucceeded, result.prompt)
         } catch {
             os_log(.error, log: recordingLog, "Post-processing failed: %{public}@", error.localizedDescription)
-            return (correctedTranscript, .postProcessingFailedFallback, "")
+            // Offline/degraded cleanup: deterministic filler strip, then Apple's
+            // on-device model with a compact prompt. Any refusal (guardrails,
+            // unavailable, suspected instruction execution) pastes the
+            // filler-stripped text instead.
+            let fillerStripped = FillerFilter.clean(correctedTranscript)
+            if AppleIntelligenceCleanup.isAvailable {
+                let mode = DictationModeStore.shared.resolve(
+                    bundleIdentifier: context.bundleIdentifier,
+                    windowTitle: context.windowTitle
+                )
+                if let polished = await AppleIntelligenceCleanup.cleanup(
+                    transcript: fillerStripped,
+                    modeSnippet: mode?.promptSnippet ?? ""
+                ), !PostProcessingService.appearsToHaveExecutedInstruction(
+                    rawTranscript: fillerStripped,
+                    cleanedTranscript: polished,
+                    outputLanguage: outputLanguage
+                ) {
+                    return (polished, .postProcessedOnDevice, "")
+                }
+            }
+            return (fillerStripped, .postProcessingFailedFallback, "")
         }
     }
 

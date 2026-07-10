@@ -511,7 +511,7 @@ Model: \(model)
         }
 
         let sanitizedTranscript = sanitizePostProcessedTranscript(content)
-        if instructionExecutionGuardEnabled && appearsToHaveExecutedInstruction(
+        if instructionExecutionGuardEnabled && Self.appearsToHaveExecutedInstruction(
             rawTranscript: transcript,
             cleanedTranscript: sanitizedTranscript,
             outputLanguage: outputLanguage
@@ -679,7 +679,7 @@ Model: \(model)
         value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func appearsToHaveExecutedInstruction(
+    static func appearsToHaveExecutedInstruction(
         rawTranscript: String,
         cleanedTranscript: String,
         outputLanguage: String
@@ -715,7 +715,7 @@ Model: \(model)
             || (preservedMarkers.isEmpty && overlapRatio < 0.35)
     }
 
-    private func significantTokens(in text: String) -> Set<String> {
+    private static func significantTokens(in text: String) -> Set<String> {
         let stopWords: Set<String> = [
             "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "could",
             "for", "from", "had", "has", "have", "he", "her", "him", "his", "i", "if",
