@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 enum AppSettingsStorage {
-    private static let bundleID = Bundle.main.bundleIdentifier ?? "com.zachlatta.freeflow"
+    private static let bundleID = Bundle.main.bundleIdentifier ?? "com.vishk23.whisprfreeme"
 
     private static var storageDirectory: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to FreeFlow are documented here.
+All notable changes to Whispr Free Me are documented here.
 
 This project uses semantic versioning for public releases. Use `MAJOR.MINOR.PATCH`, where:
 
@@ -8,22 +8,60 @@ This project uses semantic versioning for public releases. Use `MAJOR.MINOR.PATC
 - `MINOR` changes add user-visible features and improvements.
 - `PATCH` changes fix bugs, polish existing behavior, or make small internal improvements.
 
-## [Unreleased]
+## [0.4.0] - 2026-07-10
 
-This is the first release of the **Whispr Free Me** fork of FreeFlow.
+First release intended for use beyond the author's machine. Built on FreeFlow
+(upstream merged through 2026-07-10) plus the following.
 
 ### Added
 
-- Voice Bank: opt-in, local-only capture of (audio, transcript) pairs from your
-  dictations to build a voice-training dataset. Off by default; browse, play back,
-  and delete in Settings → Voice Bank. A quality gate skips silent/very short/
-  non-dictation clips, and the data is kept in its own store, independent of the
-  run-history limit. Nothing is uploaded.
-- A menu-bar indicator shown while the Voice Bank is active.
+- **Voice Bank** (opt-in, local-only): each dictation's audio + transcript build
+  a voice-training dataset. Browse, play back, delete in Settings; menu-bar
+  indicator while banking. Nothing is uploaded.
+- **Voice cloning + speak-as-me**: clone your banked voice via ElevenLabs and
+  read any selected text aloud in your own voice with ⌥⌘S.
+- **Dashboard**: Stats (streaks, WPM, activity chart, top apps), History
+  (search, Heard-vs-Cleaned comparison, audio playback, re-transcribe, failure
+  badges), Modes editor, Dictionary, Snippets, Clone, and Speak tabs.
+- **Editable content-aware modes**: the Formal/Code/Casual/Standard routing is
+  now user-editable — custom modes, per-mode prompt snippets and cleanup-model
+  overrides, app bundle-id and browser-tab (window-title) matching.
+- **Offline resilience**: automatic on-device whisper.cpp fallback when the
+  provider is unreachable, erroring, or slower than 4s (hedged race); offline
+  cleanup via Apple Intelligence with a deterministic filler/stutter pre-pass;
+  "Transcribed on-device" pill notice; Settings → Offline Fallback with
+  one-click model download.
+- **Vocabulary intelligence**: custom dictionary feeds the Whisper prompt, a
+  deterministic phonetic corrector (compact-window merges like "chat g p t" →
+  "ChatGPT"; homophone fixes like "kava" → "Cava"), and the cleanup LLM — and
+  the dictionary grows itself by learning respellings from your post-paste
+  edits (locally, via Accessibility).
+- **Hallucination defense**: trailing fillers ("Thank you.") stripped using
+  per-segment audio-energy evidence; trailing-silence trimming before upload;
+  dictionary-echo guard for silent clips.
+- **Latency**: transcription connection prewarms at record start; keep-alive
+  upload session (self-healing); cleanup skipped entirely for ≤3-word
+  dictations.
+- **Paste polish**: smart leading space via Accessibility (no more mid-text
+  "wordword" jams).
+- Live partial-transcript display in the recording pill when a realtime
+  streaming provider is configured.
 
 ### Changed
 
-- Rebranded the app from FreeFlow to Whispr Free Me.
+- Rebranded from FreeFlow to Whispr Free Me (bundle ids, log subsystems,
+  docs); `make release` builds a production-named signed DMG.
+- Context screenshots migrated from legacy CGWindowList capture to
+  ScreenCaptureKit, fixing stuck "Screen Recording Permission Needed" states
+  on macOS 14+.
+- The calibrated casual-mode register (keep commas/caps, drop only the final
+  period) ships as the default Casual snippet.
+
+### Fixed
+
+- Session-level 30s resource timeout no longer caps long transcription
+  uploads; menu-bar app opted out of automatic termination so recordings
+  can't be killed under memory pressure.
 
 ## [1.1.0] - 2026-06-03
 

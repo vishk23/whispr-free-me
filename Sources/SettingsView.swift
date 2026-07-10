@@ -535,6 +535,7 @@ struct GeneralSettingsView: View {
     @AppStorage("overlay_display_id") private var overlayDisplayID = 0
     @AppStorage("use_compact_overlay") private var useCompactOverlay = true
     @AppStorage("contentAwareModesEnabled") private var contentAwareModesEnabled = true
+    @ObservedObject private var whisperModelDownloader = LocalWhisperModelDownloader.shared
     @State private var screensVersion = 0
     @State private var apiKeyInput: String = ""
     @State private var apiBaseURLInput: String = ""
@@ -737,6 +738,9 @@ struct GeneralSettingsView: View {
                 }
                 SettingsCard("Cleanup", icon: "sparkles") {
                     cleanupSection
+                }
+                SettingsCard("Offline Fallback", icon: "bolt.horizontal.circle") {
+                    offlineFallbackSection
                 }
                 SettingsCard("Clipboard", icon: "doc.on.clipboard") {
                     clipboardSection
@@ -1297,6 +1301,73 @@ struct GeneralSettingsView: View {
             Text("If Output Language is set, the transcript is still translated into that language, but the translation is literal: no rewording, no filler removal, no reformatting.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Offline Fallback
+
+    private var offlineFallbackSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("When the provider is unreachable or slow, dictations are transcribed on this Mac and polished with Apple Intelligence — automatic once both pieces below are in place.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            statusRow(
+                ok: LocalWhisperTranscriber.binaryURL != nil,
+                okText: "whisper-cli installed",
+                missingText: "whisper-cli not found — run:  brew install whisper-cpp"
+            )
+
+            if whisperModelDownloader.modelInstalled {
+                HStack(spacing: 8) {
+                    statusRow(ok: true, okText: "Whisper model installed (\(LocalWhisperModelDownloader.approximateSizeMB) MB)", missingText: "")
+                    Spacer()
+                    Button("Remove") { whisperModelDownloader.deleteModel() }
+                        .controlSize(.small)
+                }
+            } else if whisperModelDownloader.isDownloading {
+                HStack(spacing: 8) {
+                    ProgressView(value: whisperModelDownloader.progress)
+                        .frame(maxWidth: 220)
+                    Text("\(Int(whisperModelDownloader.progress * 100))%")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Button("Cancel") { whisperModelDownloader.cancelDownload() }
+                        .controlSize(.small)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    statusRow(ok: false, okText: "", missingText: "Whisper model not downloaded")
+                    Spacer()
+                    Button("Download (\(LocalWhisperModelDownloader.approximateSizeMB) MB)") {
+                        whisperModelDownloader.startDownload()
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if let error = whisperModelDownloader.errorMessage {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+
+            statusRow(
+                ok: AppleIntelligenceCleanup.isAvailable,
+                okText: "Apple Intelligence available for offline cleanup",
+                missingText: "Apple Intelligence unavailable — offline dictations paste without LLM polish"
+            )
+        }
+        .onAppear { whisperModelDownloader.refresh() }
+    }
+
+    private func statusRow(ok: Bool, okText: String, missingText: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "circle.dashed")
+                .foregroundStyle(ok ? Color.green : Color.secondary)
+            Text(ok ? okText : missingText)
+                .font(.caption)
+                .foregroundStyle(ok ? .primary : .secondary)
+                .textSelection(.enabled)
         }
     }
 
@@ -1868,7 +1939,7 @@ struct PromptsSettingsView: View {
 
         let context = AppContext(
             appName: "\(AppName.displayName) Settings",
-            bundleIdentifier: "com.zachlatta.freeflow",
+            bundleIdentifier: "com.vishk23.whisprfreeme",
             windowTitle: "System Prompt Test",
             selectedText: nil,
             currentActivity: "User is testing the system prompt in \(AppName.displayName) settings.",

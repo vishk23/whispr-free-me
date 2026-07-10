@@ -4,7 +4,7 @@ import os.log
 import FoundationModels
 #endif
 
-private let aiCleanupLog = OSLog(subsystem: "com.zachlatta.freeflow", category: "AppleIntelligenceCleanup")
+private let aiCleanupLog = OSLog(subsystem: "com.vishk23.whisprfreeme", category: "AppleIntelligenceCleanup")
 
 /// Offline cleanup via Apple's on-device foundation model (macOS 26+, Apple
 /// Intelligence enabled). Used only when the cloud cleanup LLM is unreachable —

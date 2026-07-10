@@ -30,7 +30,7 @@ ICON_SOURCE = Resources/AppIcon-Source.png
 ICON_ICNS = Resources/AppIcon.icns
 endif
 
-.PHONY: all clean run icon dmg codesign-dmg notarize test
+.PHONY: all clean run icon dmg codesign-dmg notarize test release
 
 all: $(APP_EXECUTABLE_TARGET)
 
@@ -74,6 +74,7 @@ endif
 	@echo "Built $(APP_BUNDLE)"
 
 test: $(TEST_RUNNER)
+	swift test
 	@$(TEST_RUNNER)
 
 $(TEST_RUNNER): Sources/AppContextService.swift Sources/LLMAPITransport.swift Sources/ModelConfiguration.swift Tests/AppContextServiceTests.swift
@@ -136,11 +137,16 @@ notarize:
 		--keychain-profile "$(NOTARIZE_PROFILE)" --wait
 	xcrun stapler staple "$(BUILD_DIR)/$(APP_NAME).dmg"
 
+# Production build + signed DMG in one step: non-dev name, bundle id, and icon.
+# Requires: brew install create-dmg fileicon. Add NOTARIZE_PROFILE=<keychain
+# profile> and run `make notarize APP_NAME="Whispr Free Me"` afterwards for a
+# Gatekeeper-clean download; unnotarized DMGs need right-click > Open once.
+release:
+	$(MAKE) clean
+	$(MAKE) APP_NAME="Whispr Free Me" BUNDLE_ID=com.vishk23.whisprfreeme codesign-dmg
+
 clean:
 	rm -rf $(BUILD_DIR)
 
 run: all
 	open "$(APP_BUNDLE)"
-
-test:
-	swift test

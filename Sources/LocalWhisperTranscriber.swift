@@ -1,7 +1,7 @@
 import Foundation
 import os.log
 
-private let localWhisperLog = OSLog(subsystem: "com.zachlatta.freeflow", category: "LocalWhisper")
+private let localWhisperLog = OSLog(subsystem: "com.vishk23.whisprfreeme", category: "LocalWhisper")
 
 /// Offline transcription fallback: runs the brew-installed whisper-cli against the
 /// locally cached large-v3-turbo model when the cloud provider is unreachable.

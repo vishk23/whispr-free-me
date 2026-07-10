@@ -7,7 +7,7 @@ import ApplicationServices
 import ScreenCaptureKit
 import Carbon
 import os.log
-private let recordingLog = OSLog(subsystem: "com.zachlatta.freeflow", category: "Recording")
+private let recordingLog = OSLog(subsystem: "com.vishk23.whisprfreeme", category: "Recording")
 
 struct VoiceMacro: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
@@ -1177,7 +1177,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// Serial queue that owns every flag-file I/O so the recording
     /// start/stop hot path never blocks on disk.
     private static let recordingStateFlagQueue = DispatchQueue(
-        label: "com.zachlatta.freeflow.recording-state-flag"
+        label: "com.vishk23.whisprfreeme.recording-state-flag"
     )
 
     /// Write or clear the `is-recording` flag file. Called from the
