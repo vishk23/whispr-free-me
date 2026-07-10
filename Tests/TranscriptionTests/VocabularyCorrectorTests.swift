@@ -33,6 +33,23 @@ final class VocabularyCorrectorTests: XCTestCase {
         )
     }
 
+    func testHomophoneFirstLetterCorrects() {
+        // Whisper hears the drink; the user means the restaurant. K and C share a
+        // phonetic group, so the first letter must not block the match.
+        XCTAssertEqual(
+            VocabularyCorrector.correct("lunch at kava today", vocabulary: ["Cava"]),
+            "lunch at Cava today"
+        )
+    }
+
+    func testBrandRespellingWithApostropheCorrects() {
+        // "duncan" -> "Dunkin'": two edits plus an apostrophe in the vocab term.
+        XCTAssertEqual(
+            VocabularyCorrector.correct("grab coffee at duncan", vocabulary: ["Dunkin'"]),
+            "grab coffee at Dunkin'"
+        )
+    }
+
     func testPunctuationSurvivesReplacement() {
         XCTAssertEqual(
             VocabularyCorrector.correct("Have you tried chargebee?", vocabulary: ["ChargeBee"]),

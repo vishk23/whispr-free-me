@@ -3098,6 +3098,7 @@ final class AppState: ObservableObject, @unchecked Sendable {
 
                             let pendingClipboardRestore = self.writeTranscriptToPasteboard(trimmedFinalTranscript)
                             self.pasteAtCursorWhenShortcutReleased {
+                                self.scheduleCorrectionLearning(pastedTranscript: trimmedFinalTranscript)
                                 if shouldPressEnterAfterPaste {
                                     self.pressEnterAfterPaste {
                                         self.restoreClipboardIfNeeded(pendingClipboardRestore)
@@ -3594,6 +3595,82 @@ final class AppState: ObservableObject, @unchecked Sendable {
     /// types for clipboard managers, and saving the clipboard state for later restoration.
     /// - Parameter transcript: The text to be pasted.
     /// - Returns: A `PendingClipboardRestore` object if clipboard preservation is enabled, otherwise nil.
+    // MARK: - Correction learning
+
+    /// Bumped on every schedule so stale pending checks die quietly.
+    private var correctionLearnGeneration = 0
+
+    /// Watches the field a dictation was pasted into and learns vocabulary from
+    /// the user's respellings ("Kava" -> "Cava"): re-reads the field via AX at two
+    /// checkpoints, word-diffs against what was pasted, and adds phonetically-close
+    /// substitutions to the custom dictionary. Silent no-op when the field can't be
+    /// read (secure fields, web areas, message already sent).
+    private func scheduleCorrectionLearning(pastedTranscript: String) {
+        correctionLearnGeneration += 1
+        let generation = correctionLearnGeneration
+        let pasted = pastedTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard pasted.count >= 12 else { return } // too short to align reliably
+
+        let systemWide = AXUIElementCreateSystemWide()
+        var focusedRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute as CFString, &focusedRef) == .success,
+              let rawFocused = focusedRef,
+              CFGetTypeID(rawFocused) == AXUIElementGetTypeID() else { return }
+        let field = unsafeDowncast(rawFocused as AnyObject, to: AXUIElement.self)
+
+        attemptCorrectionLearning(field: field, pasted: pasted, generation: generation, remainingDelays: [8.0, 12.0])
+    }
+
+    private func attemptCorrectionLearning(
+        field: AXUIElement,
+        pasted: String,
+        generation: Int,
+        remainingDelays: [TimeInterval]
+    ) {
+        guard let delay = remainingDelays.first else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.correctionLearnGeneration == generation else { return }
+
+            var valueRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(field, kAXValueAttribute as CFString, &valueRef) == .success,
+                  let value = valueRef as? String,
+                  !value.isEmpty else { return } // field cleared or gone — message sent
+
+            // Only diff when the field is roughly "the dictation, edited" — a huge
+            // value means unrelated surrounding text (a document), too risky.
+            if value != pasted, value.count <= max(pasted.count * 3, pasted.count + 120) {
+                let learned = CorrectionLearner.extractCorrections(
+                    pasted: pasted,
+                    edited: value,
+                    existingVocabulary: Self.vocabularyTerms(from: self.customVocabulary)
+                )
+                if !learned.isEmpty {
+                    self.addLearnedVocabulary(learned)
+                    return
+                }
+            }
+            self.attemptCorrectionLearning(
+                field: field,
+                pasted: pasted,
+                generation: generation,
+                remainingDelays: Array(remainingDelays.dropFirst())
+            )
+        }
+    }
+
+    private func addLearnedVocabulary(_ terms: [String]) {
+        let existing = Set(Self.vocabularyTerms(from: customVocabulary).map { $0.lowercased() })
+        let fresh = terms.filter { !existing.contains($0.lowercased()) }
+        guard !fresh.isEmpty else { return }
+        customVocabulary = customVocabulary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? fresh.joined(separator: "\n")
+            : customVocabulary + "\n" + fresh.joined(separator: "\n")
+        Task { @MainActor in
+            VocabularyNotificationManager.shared.flashCheckmark()
+        }
+        os_log(.info, log: recordingLog, "learned vocabulary from user edit: %{public}@", fresh.joined(separator: ", "))
+    }
+
     /// Reads the character immediately before the insertion point in the focused
     /// text element, so the paste can decide whether it needs a leading space.
     /// Returns nil when there is no selection range, the caret is at position 0,

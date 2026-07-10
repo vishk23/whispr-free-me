@@ -1,14 +1,16 @@
 import Foundation
 
 /// Deterministic post-STT vocabulary enforcement: rewrites near-miss transcriptions of
-/// user-dictionary terms to their authoritative spelling. Three match tiers, all
+/// user-dictionary terms to their authoritative spelling. Match tiers, all
 /// conservative because a wrong correction is worse than a missed one:
 /// 1. compact-exact — the token window equals the term once spaces/punctuation are
 ///    dropped ("chat g p t" -> "ChatGPT", "chargebee" -> "ChargeBee")
-/// 2. fuzzy — single token whose edit-distance ratio to the term is <= 0.25 AND whose
-///    Soundex code matches ("grok" -> "Groq", while "grow" keeps its distinct code)
+/// 2. fuzzy — single token whose edit-distance ratio to the term is <= 0.34 AND whose
+///    phonetic code matches ("grok" -> "Groq", "kava" -> "Cava", "duncan" ->
+///    "Dunkin'"), while "grow" keeps its distinct code and survives. Unlike classic
+///    Soundex the first letter is grouped too, so K/C homophones can match.
 public enum VocabularyCorrector {
-    static let maxEditRatio = 0.25
+    static let maxEditRatio = 0.34
     static let minFuzzyLength = 3
 
     public static func correct(_ text: String, vocabulary: [String]) -> String {
@@ -104,14 +106,16 @@ public enum VocabularyCorrector {
     }
 
     static func fuzzyMatches(_ word: String, term: String) -> Bool {
-        let w = word.lowercased()
-        let t = term.lowercased()
-        guard w != t else { return true } // case-only difference
+        // Compare compact forms so punctuation inside the vocab term ("Dunkin'")
+        // doesn't inflate the edit distance.
+        let w = compact(word)
+        let t = compact(term)
+        guard w != t else { return true } // case/punctuation-only difference
         guard w.count >= minFuzzyLength, t.count >= minFuzzyLength else { return false }
         let distance = levenshtein(w, t)
         let ratio = Double(distance) / Double(max(w.count, t.count))
         guard ratio <= maxEditRatio else { return false }
-        return soundex(w) == soundex(t)
+        return phoneticCode(w) == phoneticCode(t)
     }
 
     static func compact(_ s: String) -> String {
@@ -135,11 +139,14 @@ public enum VocabularyCorrector {
         return previous[bChars.count]
     }
 
-    /// Classic Soundex, ASCII letters only; non-ASCII input falls back to itself so
-    /// two different accented words never collide via the empty code.
-    static func soundex(_ word: String) -> String {
+    /// Soundex-style phonetic code with the first letter grouped like every other
+    /// letter (classic Soundex keeps it literal, which blocks K/C homophones such
+    /// as "kava"/"Cava"). Consecutive same-group consonants collapse; vowels and
+    /// h/w/y drop. Non-ASCII input falls back to the word itself so two different
+    /// accented words never collide via an empty code.
+    static func phoneticCode(_ word: String) -> String {
         let letters = word.lowercased().unicodeScalars.filter { $0.isASCII && CharacterSet.lowercaseLetters.contains($0) }
-        guard let first = letters.first else { return word }
+        guard !letters.isEmpty else { return word }
         func code(_ c: UnicodeScalar) -> Character? {
             switch c {
             case "b", "f", "p", "v": return "1"
@@ -151,17 +158,16 @@ public enum VocabularyCorrector {
             default: return nil // vowels + h/w/y drop
             }
         }
-        var result = String(Character(first)).uppercased()
-        var lastCode = code(first)
-        for scalar in letters.dropFirst() {
+        var result = ""
+        var lastCode: Character?
+        for scalar in letters {
             let c = code(scalar)
             if let c, c != lastCode {
                 result.append(c)
-                if result.count == 4 { break }
             }
             if scalar != "h" && scalar != "w" { lastCode = c }
         }
-        return result.padding(toLength: 4, withPad: "0", startingAt: 0)
+        return result.isEmpty ? word : result
     }
 }
 
