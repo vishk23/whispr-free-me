@@ -10,13 +10,20 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/vishk23/rhapsode/releases/latest"><img src="https://img.shields.io/github/v/release/vishk23/rhapsode?color=7c3aed&label=download" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-13%2B-blue" alt="macOS 13+">
+  <img src="https://img.shields.io/github/license/vishk23/rhapsode?color=f1c40f" alt="MIT license">
+  <img src="https://img.shields.io/badge/price-free%20(BYO%20API%20key)-2ea44f" alt="Free">
+</p>
+
+<p align="center">
   <sub>Built on <a href="https://github.com/zachlatta/freeflow">FreeFlow</a> by <a href="https://github.com/zachlatta">@zachlatta</a> · macOS 13+ · Apple Silicon &amp; Intel</sub>
 </p>
 
 ---
 
 <p align="center">
-  <img src="Resources/demo.gif" alt="Demo" width="600">
+  <img src="Resources/hero-banner.png" alt="Rhapsode — open-source dictation for the Mac" width="720">
 </p>
 
 ## What it does
@@ -68,6 +75,24 @@ mode resolution              hallucination filter (audio-energy evidence)
                                          ▼
                     smart-spaced paste (clipboard preserved & restored)
 ```
+
+## How it compares
+
+The short version: cloud-fast when the network is good, on-device when it isn't, learns your vocabulary like the commercial apps, and it's the only one that gives your voice back.
+
+| | **Rhapsode** | Wispr Flow | VoiceInk | Handy | OpenWhispr |
+|---|---|---|---|---|---|
+| Price | Free (BYO API key, ~pennies/mo) | $12–15/mo | Freemium | Free | Free |
+| Transcription | Cloud **+ auto on-device fallback + 4s hedge** | Cloud only | Local-first + cloud | Local only | Local + BYOK |
+| Works offline | Yes — transcribed *and* polished on-device | No | Yes | Yes | Yes |
+| Self-learning dictionary | Yes | Yes | No | No | Yes |
+| Editable per-app modes | Yes, incl. browser-tab routing + per-mode model | Automatic only | Yes | No | Scoped prompts |
+| Hallucination filtering | Audio-energy evidence per segment | Opaque | Regex | VAD prevention | Multi-guard |
+| History w/ audio replay & re-transcribe | Yes | History | Yes | Basic | Yes |
+| **Text → your cloned voice** | **Yes (⌥⌘S anywhere)** | No | No | No | No |
+| Platforms | macOS | Mac/Win/iOS/Android | macOS | Mac/Win/Linux | Mac/Win |
+
+Each of those projects is good at what it optimizes for — Handy for fully-local purity, VoiceInk for local-first Mac polish, Wispr Flow for multi-platform convenience. Rhapsode optimizes for one person's daily-driver on a Mac: lowest latency available at any moment, no subscription, every dictation auditable, and a voice that goes both directions.
 
 ## Privacy
 
