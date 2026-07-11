@@ -11,9 +11,14 @@
 
 <p align="center">
   <a href="https://github.com/vishk23/rhapsode/releases/latest"><img src="https://img.shields.io/github/v/release/vishk23/rhapsode?color=7c3aed&label=download" alt="Latest release"></a>
+  <a href="https://github.com/vishk23/rhapsode/actions/workflows/ci.yml"><img src="https://github.com/vishk23/rhapsode/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-blue" alt="macOS 13+">
   <img src="https://img.shields.io/github/license/vishk23/rhapsode?color=f1c40f" alt="MIT license">
   <img src="https://img.shields.io/badge/price-free%20(BYO%20API%20key)-2ea44f" alt="Free">
+</p>
+
+<p align="center">
+  <a href="https://github.com/vishk23/rhapsode/releases/latest/download/Rhapsode.dmg"><b>⬇ Download Rhapsode.dmg</b></a> — signed &amp; notarized, drag to Applications, done.
 </p>
 
 <p align="center">
@@ -40,7 +45,9 @@ Hold `Fn`, talk, release — clean text lands wherever your cursor is, in well u
 
 ## Install
 
-**Build from source** (a Mac with Xcode command-line tools):
+**Download** (recommended): **[Rhapsode.dmg](https://github.com/vishk23/rhapsode/releases/latest/download/Rhapsode.dmg)** — signed and notarized, so it opens without Gatekeeper hoops. Drag to Applications and launch; first run walks you through everything — a free Groq API key ([groq.com](https://groq.com)), microphone, accessibility, shortcuts, and a test dictation.
+
+**Or build from source** (Xcode command-line tools):
 
 ```bash
 git clone https://github.com/vishk23/rhapsode.git
@@ -50,8 +57,6 @@ open "build/Rhapsode Dev.app"
 ```
 
 > Ad-hoc signing means macOS re-asks for permissions after each rebuild. If you have a Developer ID certificate, pass `CODESIGN_IDENTITY=<cert hash>` for grants that stick. `make release` builds a production-named app and a signed DMG (`brew install create-dmg fileicon` first).
-
-**Setup**: first launch walks you through everything — Groq API key (free at [groq.com](https://groq.com)), microphone, accessibility, shortcuts, and a test dictation.
 
 **Optional offline fallback**: Settings → Offline Fallback shows the two pieces — `brew install whisper-cpp` and a one-click 547 MB model download. Once both are green, network loss costs you ~1.5s per dictation instead of your dictation.
 
@@ -75,6 +80,14 @@ mode resolution              hallucination filter (audio-energy evidence)
                                          ▼
                     smart-spaced paste (clipboard preserved & restored)
 ```
+
+## A look inside
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-stats.png" alt="Rhapsode Dashboard — stats, streaks, WPM, activity" width="720">
+</p>
+
+Every dictation is also browsable in the History tab — raw "Heard" text vs the cleaned output side by side, with audio playback and one-click re-transcription.
 
 ## How it compares
 
