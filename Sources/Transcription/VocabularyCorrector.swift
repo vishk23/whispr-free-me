@@ -115,7 +115,17 @@ public enum VocabularyCorrector {
         let distance = levenshtein(w, t)
         let ratio = Double(distance) / Double(max(w.count, t.count))
         guard ratio <= maxEditRatio else { return false }
-        return phoneticCode(w) == phoneticCode(t)
+        return phoneticCode(w) == phoneticCode(t) && firstLettersCompatible(w, t)
+    }
+
+    /// Word-initial sounds are far more discriminating than the coarse phonetic
+    /// groups — grouping J with C let a real dictation's "Java" be rewritten to
+    /// "Cava". Only C/K/Q can genuinely sound identical at position 0.
+    static func firstLettersCompatible(_ a: String, _ b: String) -> Bool {
+        guard let fa = a.first, let fb = b.first else { return false }
+        if fa == fb { return true }
+        let hardC: Set<Character> = ["c", "k", "q"]
+        return hardC.contains(fa) && hardC.contains(fb)
     }
 
     static func compact(_ s: String) -> String {
@@ -191,5 +201,37 @@ public enum DictionaryEchoGuard {
         let composition = Double(vocabHits.count) / Double(words.count)
         let usage = Double(Set(vocabHits).count) / Double(vocabWords.count)
         return composition >= minTextComposition && usage >= minVocabularyUsage
+    }
+
+    /// Whisper can also parrot the vocabulary prompt onto the quiet tail of REAL
+    /// speech ("...feeling productive. Cava, Dunkin'"). The signature is precise:
+    /// the transcript ends with two or more vocabulary terms in prompt order,
+    /// comma-joined exactly as the prompt joins them. A genuine spoken list uses
+    /// "and", different order, or continues the sentence — all left untouched.
+    /// Single trailing terms are never stripped ("...coffee at Dunkin'" is real).
+    public static func stripTrailingPromptEcho(transcript: String, vocabulary: [String]) -> String {
+        let terms = vocabulary
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard terms.count >= 2 else { return transcript }
+
+        var body = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Tolerate a trailing period Whisper sometimes appends to the echo.
+        if body.hasSuffix(".") {
+            body.removeLast()
+        }
+
+        for start in 0...(terms.count - 2) {
+            let candidate = terms[start...].joined(separator: ", ")
+            if body.lowercased().hasSuffix(candidate.lowercased()) {
+                let stripped = String(body.dropLast(candidate.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                // Refuse to reduce the transcript to nothing — that case is the
+                // whole-transcript echo, which isEcho already handles.
+                guard !stripped.isEmpty else { return transcript }
+                return stripped
+            }
+        }
+        return transcript
     }
 }

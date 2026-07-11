@@ -465,7 +465,7 @@ class TranscriptionService {
                 )
             }
             let probe = audioData.flatMap { WAVEnergyProbe(data: $0) }
-            let cleaned = HallucinationFilter.strip(
+            var cleaned = HallucinationFilter.strip(
                 text: text,
                 segments: segments,
                 windowRMS: probe.map { probe in { probe.rms(start: $0, end: $1) } }
@@ -473,6 +473,15 @@ class TranscriptionService {
             if cleaned != text {
                 os_log(.info, log: transcriptionLog, "stripped trailing hallucination: %{public}@ -> %{public}@", text, cleaned)
             }
+            // Whisper can also parrot the vocabulary prompt onto the quiet tail
+            // of real speech ("...productive. Cava, Dunkin'").
+            let deEchoed = DictionaryEchoGuard.stripTrailingPromptEcho(
+                transcript: cleaned, vocabulary: vocabularyTerms
+            )
+            if deEchoed != cleaned {
+                os_log(.info, log: transcriptionLog, "stripped trailing vocabulary echo")
+            }
+            cleaned = deEchoed
             // Injecting a vocabulary prompt makes Whisper parrot it back on
             // silent/noise-only clips; treat a prompt echo as an empty transcript.
             if DictionaryEchoGuard.isEcho(transcript: cleaned, vocabulary: vocabularyTerms) {

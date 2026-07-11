@@ -71,6 +71,9 @@ enum LocalWhisperTranscriber {
             segments: output.segments,
             windowRMS: probe.map { probe in { probe.rms(start: $0, end: $1) } }
         ).trimmingCharacters(in: .whitespacesAndNewlines)
+        cleaned = DictionaryEchoGuard.stripTrailingPromptEcho(
+            transcript: cleaned, vocabulary: vocabularyTerms
+        )
         if DictionaryEchoGuard.isEcho(transcript: cleaned, vocabulary: vocabularyTerms) {
             cleaned = ""
         }
