@@ -51,6 +51,12 @@ Example: "hey dana comma quick question" -> "Hey Dana, quick question"
                 let response = try await session.respond(to: "Clean up this dictated text:\n<<<\n\(transcript)\n>>>")
                 let cleaned = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !cleaned.isEmpty else { return nil }
+                // A refusal is never valid cleanup — nil sends the caller to
+                // the filler-stripped raw transcript instead.
+                guard !RefusalDetector.isRefusal(output: cleaned, rawTranscript: transcript) else {
+                    os_log(.info, log: aiCleanupLog, "on-device cleanup refused — using raw")
+                    return nil
+                }
                 os_log(
                     .info, log: aiCleanupLog,
                     "on-device cleanup in %.2fs (%d -> %d chars)",

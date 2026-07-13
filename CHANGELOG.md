@@ -8,6 +8,23 @@ This project uses semantic versioning for public releases. Use `MAJOR.MINOR.PATC
 - `MINOR` changes add user-visible features and improvements.
 - `PATCH` changes fix bugs, polish existing behavior, or make small internal improvements.
 
+## [0.5.2] - 2026-07-13
+
+### Fixed
+
+- **Your words always paste now.** The cleanup LLM could refuse a dictation on
+  content grounds and its stock refusal ("I'm sorry, but I can't help with
+  that.") pasted INSTEAD of your words. A refusal is never valid output from a
+  formatting layer: a new detector catches refusal-shaped output on every
+  cleanup path (cloud, retry, on-device, Edit Mode) and falls through the
+  existing chain — fallback model, then on-device polish, then the raw
+  transcript — so the speaker's words land regardless of topic. Genuinely
+  dictated refusal-shaped sentences ("I'm sorry, but I can't help with that")
+  still paste, because the raw transcript starts the same way.
+- The cleanup prompt now states it is a transcription layer that never judges
+  content, and formats spoken clock times ("the gap from 313 to 329" ->
+  "the gap from 3:13 to 3:29").
+
 ## [0.5.1] - 2026-07-10
 
 ### Fixed
