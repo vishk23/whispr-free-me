@@ -31,6 +31,10 @@
   <img src="Resources/hero-banner.png" alt="Rhapsode — open-source dictation for the Mac" width="720">
 </p>
 
+<p align="center">
+  <img src="Resources/demo.gif" alt="Rhapsode in action — hold Fn, talk, release, and clean text lands at your cursor" width="720">
+</p>
+
 ## What it does
 
 Hold `Fn`, talk, release — clean text lands wherever your cursor is, in well under a second. Under the hood, every dictation runs a pipeline tuned far past basic Whisper-and-paste:
