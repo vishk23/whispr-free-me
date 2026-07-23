@@ -1,3 +1,7 @@
 corpus.md
+corpus-full.md
 VOICE.md
+LEXICON.md
+PATTERNS.md
+filters.txt
 *.sqlite*

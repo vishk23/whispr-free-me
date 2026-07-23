@@ -54,6 +54,25 @@ def normalize(text):
     return re.sub(r"[^\w\s]", "", (text or "").lower()).split()
 
 
+def load_filters(path):
+    """Load exclusion patterns: one case-insensitive regex per line, # comments.
+    Any entry whose transcript matches any pattern is dropped from the corpus.
+    Lets users keep private material out of generated corpora permanently —
+    the filter re-applies on every regeneration."""
+    if not path or not path.exists():
+        return []
+    patterns = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(re.compile(line, re.IGNORECASE))
+    return patterns
+
+
+def is_filtered(text, patterns):
+    return any(p.search(text) for p in patterns)
+
+
 def copy_db(db_path):
     """Copy the store (plus WAL/SHM sidecars) so a live app is never disturbed."""
     tmpdir = Path(tempfile.mkdtemp(prefix="voice-profile-"))
@@ -102,7 +121,12 @@ def main():
                              "voicebank: full uncapped archive (raw only)")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output corpus path")
     parser.add_argument("--min-words", type=int, default=MIN_WORDS, help="drop shorter entries")
+    parser.add_argument("--filters", type=Path,
+                        default=Path.home() / "VoiceProfile/filters.txt",
+                        help="exclusion patterns file (one case-insensitive regex "
+                             "per line); matching entries are dropped")
     args = parser.parse_args()
+    args.filter_patterns = load_filters(args.filters)
 
     if args.source == "voicebank":
         run_voicebank(args)
@@ -121,6 +145,9 @@ def main():
         words = normalize(raw)
         if not raw:
             dropped["empty"] += 1
+            continue
+        if is_filtered(raw, args.filter_patterns):
+            dropped["filtered"] += 1
             continue
         if len(words) < args.min_words:
             dropped["short"] += 1
@@ -146,7 +173,7 @@ def main():
         "",
         f"Extracted {datetime.date.today().isoformat()}. "
         f"{len(entries)} entries, ~{total_words} words "
-        f"(dropped: {dropped['empty']} empty, {dropped['short']} short, {dropped['duplicate']} duplicate).",
+        f"(dropped: {dropped['empty']} empty, {dropped['short']} short, {dropped['duplicate']} duplicate, {dropped['filtered']} filtered).",
         "",
         "Context breakdown: "
         + ", ".join(f"{app} {len(rs)}" for app, rs in sorted(by_app.items(), key=lambda kv: -len(kv[1]))),
@@ -187,6 +214,9 @@ def run_voicebank(args):
         if not raw:
             dropped["empty"] += 1
             continue
+        if is_filtered(raw, args.filter_patterns):
+            dropped["filtered"] += 1
+            continue
         if len(words) < args.min_words:
             dropped["short"] += 1
             continue
@@ -212,7 +242,7 @@ def run_voicebank(args):
         "",
         f"Extracted {datetime.date.today().isoformat()}. "
         f"{len(entries)} entries, ~{total_words} words, {total_min:.0f} minutes of speech "
-        f"(dropped: {dropped['empty']} empty, {dropped['short']} short, {dropped['duplicate']} duplicate).",
+        f"(dropped: {dropped['empty']} empty, {dropped['short']} short, {dropped['duplicate']} duplicate, {dropped['filtered']} filtered).",
         "",
         "Context breakdown: "
         + ", ".join(f"{app} {len(rs)}" for app, rs in sorted(by_app.items(), key=lambda kv: -len(kv[1]))),
