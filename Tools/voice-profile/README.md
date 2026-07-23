@@ -71,11 +71,17 @@ commit a corpus, a profile, or your filters file.
 
 ## The `/write-as-me` skill
 
-[skill-template/SKILL.md](skill-template/SKILL.md) is a ready-made Claude
-Code skill: copy it to `~/.claude/skills/write-as-me/`, point
-`RHAPSODE_REPO` at your checkout, and any Claude Code session can draft copy
-in your voice — auto-refreshing the corpus when it's stale, grounding drafts
-in your verbatim words, and auditing against your lexicon.
+```bash
+make install-skill
+```
+
+Installs the skill into **Claude Code** (`~/.claude/skills/`) and **Codex**
+(`~/.codex/skills/`) — whichever you have; both agents use the same SKILL.md
+format. After that, any session can draft copy in your voice:
+auto-refreshing the corpus when it's stale, grounding drafts in your
+verbatim words, and auditing against your lexicon. Re-run the installer
+after moving the repo; it backs up any locally-modified install first.
+Template: [skill-template/SKILL.md](skill-template/SKILL.md).
 
 ## Roadmap
 

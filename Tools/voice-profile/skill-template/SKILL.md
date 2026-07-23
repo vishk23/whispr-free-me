@@ -5,14 +5,17 @@ description: Write copy in the user's authentic voice using their dictation-deri
 
 # Write As Me
 
-<!-- Install: copy this directory to ~/.claude/skills/write-as-me/ and set
-     RHAPSODE_REPO below to wherever you cloned Rhapsode. Build your voice
-     pack first: see Tools/voice-profile/README.md. -->
+<!-- INSTALL: run `make install-skill` from the repo root (or
+     Tools/voice-profile/install-skill.sh) — it installs this skill into
+     Claude Code (~/.claude/skills/) and Codex (~/.codex/skills/), whichever
+     exist, with the repo path filled in and this comment stripped. Both
+     agents use the same SKILL.md format. Build your voice pack first:
+     Tools/voice-profile/README.md. Manual alternative: copy it yourself and
+     replace the placeholder repo path in the commands below. -->
 
 The user's voice pack lives in `~/VoiceProfile/` — a layered profile
 distilled from their Rhapsode dictation archive. This skill drafts text that
-sounds like them, grounded in that pack. `RHAPSODE_REPO` below means the
-path to their Rhapsode checkout.
+sounds like them, grounded in that pack.
 
 ## Step 1 — Freshness check
 

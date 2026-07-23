@@ -33,7 +33,7 @@ ICON_SOURCE = Resources/AppIcon-Source.png
 ICON_ICNS = Resources/AppIcon.icns
 endif
 
-.PHONY: all clean run icon dmg codesign-dmg notarize test release
+.PHONY: all clean run icon dmg codesign-dmg notarize test release install-skill
 
 all: $(APP_EXECUTABLE_TARGET)
 
@@ -153,3 +153,6 @@ clean:
 
 run: all
 	open "$(APP_BUNDLE)"
+
+install-skill:
+	sh Tools/voice-profile/install-skill.sh
